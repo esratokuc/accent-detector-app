@@ -1,22 +1,18 @@
-
 import streamlit as st
-from accent_classifier import classify_accent
-from audio_utils import extract_audio
+from utils import download_video, extract_audio, transcribe_audio, analyze_accent
 
-st.title("🎙️ English Accent Analyzer")
+st.title("English Accent Detector")
 
-video_file = st.file_uploader("Upload a video file (MP4)", type=["mp4"])
-if video_file is not None:
-    with open("temp_video.mp4", "wb") as f:
-        f.write(video_file.read())
-    st.success("Video uploaded!")
+video_url = st.text_input("Enter public video URL (MP4 or Loom):")
 
-    audio_path = extract_audio("temp_video.mp4")
-    st.info("Audio extracted. Analyzing...")
+if st.button("Analyze"):
+    with st.spinner("Processing..."):
+        video_path = download_video(video_url)
+        audio_path = extract_audio(video_path)
+        transcript = transcribe_audio(audio_path)
+        accent, confidence, explanation = analyze_accent(transcript)
 
-    result = classify_accent(audio_path)
-
-    st.markdown("## 🎯 Result")
-    st.markdown(f"**Accent:** {result['accent']}")
-    st.markdown(f"**Confidence:** {result['confidence']}%")
-    st.markdown(f"**Summary:** {result['summary']}")
+        st.success("Analysis Complete!")
+        st.markdown(f"**Accent:** {accent}")
+        st.markdown(f"**Confidence:** {confidence}%")
+        st.markdown(f"**Explanation:** {explanation}")
