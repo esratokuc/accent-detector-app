@@ -1,69 +1,43 @@
-from faster_whisper import WhisperModel
-from openai import OpenAI
 import streamlit as st
-import json
+from openai import OpenAI
+from faster_whisper import WhisperModel
 
-# OpenAI client (yeni sürüm uyumlu)
-client = OpenAI.from_api_key(st.secrets["OPENAI_API_KEY"])
+# 🔐 API anahtarı st.secrets üzerinden alınır
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# Whisper modeli (CPU için base modeli yeterli)
-model = WhisperModel("base", device="cpu")
+# Whisper modeli (daha hızlı olan faster-whisper)
+model = WhisperModel("base", device="cpu", compute_type="int8")
 
-def classify_accent(audio_path):
-    # 1. Ses dosyasından metni çıkar
+# 📌 Aksan tahmini ve özet üretme fonksiyonu
+def classify_accent(audio_path: str):
+    # 1. Transkripsiyon
     segments, info = model.transcribe(audio_path)
-    text = " ".join([segment.text for segment in segments])
-    language = info.language
+    transcript = " ".join([segment.text for segment in segments])
 
-    # 2. İngilizce değilse bildirim yap
-    if language != "en":
-        return {
-            "accent": "Non-English",
-            "confidence": 0,
-            "summary": f"Detected language is {language.upper()}, not English."
-        }
-
-    # 3. OpenAI Chat API ile aksan analizi
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert in English accent classification and speech analysis."
-                },
-                {
-                    "role": "user",
-                    "content": f"""
-Given the following English transcript, determine the speaker's English accent.
-Options: American, British, Australian, Indian, Other.
-
-Then give:
-- A confidence score (0-100%)
-- A 1-2 sentence summary of what is being said.
+    # 2. OpenAI ile analiz
+    prompt = f"""Analyze the following English transcript. Determine the likely English accent (e.g., American, British, Australian), give a confidence score from 0 to 100%, and summarize the content.
 
 Transcript:
-\"{text}\"
+\"\"\"
+{transcript}
+\"\"\"
 
-Return your response in JSON format like:
-{{
-  "accent": "...",
-  "confidence": ...,
-  "summary": "..."
-}}
-"""
-                }
-            ],
-            temperature=0.3
-        )
+Respond in JSON format like:
+{{"accent": "British", "confidence": 85.2, "summary": "Speaker talked about their education and work."}}"""
 
-        reply = response.choices[0].message.content
-        result = json.loads(reply)
-        return result
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
 
-    except Exception as e:
-        return {
-            "accent": "Error",
+    # Yanıttan JSON cevabını çek
+    try:
+        result = eval(response.choices[0].message.content)
+    except Exception:
+        result = {
+            "accent": "Unknown",
             "confidence": 0,
-            "summary": f"Failed to analyze due to: {str(e)}"
+            "summary": "Failed to analyze."
         }
+
+    return result
