@@ -1,49 +1,43 @@
-
+import requests
+from moviepy.editor import VideoFileClip
+import openai
 import os
-from openai import OpenAI
-from faster_whisper import WhisperModel
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-model = WhisperModel("base", device="cpu", compute_type="int8")
+def download_video(url):
+    local_path = "video.mp4"
+    r = requests.get(url)
+    with open(local_path, "wb") as f:
+        f.write(r.content)
+    return local_path
 
-def classify_accent(audio_path):
-    segments, info = model.transcribe(audio_path, beam_size=5)
-    transcription = " ".join([segment.text for segment in segments])
+def extract_audio(video_path):
+    clip = VideoFileClip(video_path)
+    audio_path = "audio.wav"
+    clip.audio.write_audiofile(audio_path)
+    return audio_path
 
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an English accent classification assistant. Analyze the text and determine whether the speaker has a British, American, or other English accent. Give a confidence score from 0 to 100 and provide a 1-sentence summary."
-            },
-            {"role": "user", "content": transcription}
-        ]
+def transcribe_audio(audio_path):
+    with open(audio_path, "rb") as f:
+        transcript = openai.Audio.transcribe("whisper-1", f)["text"]
+    return transcript
+
+def analyze_accent(transcript):
+    prompt = f"""
+You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
+- The likely English accent (e.g., British, American, Indian, etc.)
+- Confidence score (0-100%)
+- Short 1-2 sentence explanation.
+
+Transcript:
+{transcript}
+"""
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
     )
-
-    message = completion.choices[0].message.content
-
-    # Simple parsing (improve if needed)
-    accent = "Unknown"
-    confidence = 0
-    summary = message
-
-    if "American" in message:
-        accent = "American"
-    elif "British" in message:
-        accent = "British"
-    elif "Australian" in message:
-        accent = "Australian"
-    elif "Non-English" in message:
-        accent = "Non-English"
-
-    import re
-    match = re.search(r"(\d{1,3})%", message)
-    if match:
-        confidence = int(match.group(1))
-
-    return {
-        "accent": accent,
-        "confidence": confidence,
-        "summary": summary
-    }
+    answer = response["choices"][0]["message"]["content"]
+    lines = answer.strip().splitlines()
+    accent = lines[0].split(":")[-1].strip()
+    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
+    explanation = lines[2].split(":", 1)[-1].strip()
+    return accent, confidence, explanation
