@@ -39,7 +39,7 @@ if st.button("Analyze Video") and video_url:
             st.markdown(f"**Confidence Score:** `{confidence}%`")
             st.markdown(f"**Explanation:** _{explanation}_")
 
-            st.markdown("### 🧾 Content Summary")
+            st.markdown("### 🧾 Transcript Summary")
             st.markdown(f"> {summary}")
 
             st.markdown("### 📊 Speaking Evaluation")
@@ -49,7 +49,7 @@ if st.button("Analyze Video") and video_url:
             st.markdown(f"- **Confidence / Presence:** {presence}/10")
             st.markdown(f"- **Tone:** _{tone}_")
 
-            st.markdown("### 💡 Suggestion for Improvement")
+            st.markdown("### 💡 Suggested Improvement")
             st.markdown(f"_{suggestion}_")
 
             st.markdown("### 🎬 YouTube-style Video Description")
