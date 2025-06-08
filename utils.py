@@ -17,8 +17,8 @@ def extract_audio(video_path):
     subprocess.run(command, shell=True, check=True)
     return audio_path
 
-def transcribe_audio(audio_path):
-    with open(audio_path, "rb") as f:
+def transcribe_audio(video_path):
+    with open(video_path, "rb") as f:
         transcript = openai.Audio.transcribe("whisper-1", f)["text"]
     return transcript
 
