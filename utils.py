@@ -33,7 +33,7 @@ def transcribe_audio(video_path):
         file=partial_file
     )
     return transcript.text
-
+# Updated parsing with strict label search
 def analyze_accent(transcript):
     """Analyze transcript for accent, clarity, tone, and content"""
     response = client.chat.completions.create(
@@ -61,8 +61,8 @@ TASKS:
 Use this exact format:
 
 Accent: ...
-Confidence: ...
-Explanation: ...
+Accent Score: ...
+Accent Explanation: ...
 
 Summary:
 ...
@@ -70,7 +70,7 @@ Summary:
 Clarity: ...
 Diction: ...
 Expressiveness: ...
-Confidence: ...
+Presence: ...
 Tone: ...
 Video Description: ...
 """
@@ -80,6 +80,49 @@ Video Description: ...
 
     answer = response.choices[0].message.content.strip()
     lines = answer.splitlines()
+
+    def get_value(label):
+        line = next((l for l in lines if l.startswith(label)), None)
+        return line.split(":", 1)[-1].strip() if line else "Not available"
+
+    def safe_int(text):
+        try:
+            return int(text)
+        except:
+            return "Not available"
+
+    accent = get_value("Accent")
+    confidence = safe_int(get_value("Accent Score").replace("%", ""))
+    explanation = get_value("Accent Explanation")
+
+    # Summary extraction
+    try:
+        summary_start = lines.index("Summary:") + 1
+        scores_start = next(i for i, l in enumerate(lines) if l.startswith("Clarity:"))
+        summary = "\n".join(lines[summary_start:scores_start]).strip()
+    except:
+        summary = "Not available"
+
+    clarity = safe_int(get_value("Clarity"))
+    diction = safe_int(get_value("Diction"))
+    expressiveness = safe_int(get_value("Expressiveness"))
+    presence = safe_int(get_value("Presence"))
+    tone = get_value("Tone")
+    video_description = get_value("Video Description")
+
+    return (
+        accent,
+        confidence,
+        explanation,
+        summary,
+        clarity,
+        diction,
+        expressiveness,
+        presence,
+        tone,
+        video_description
+    )
+
 
     def get_value(label):
         line = next((l for l in lines if l.startswith(label)), None)
