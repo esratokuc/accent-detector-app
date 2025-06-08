@@ -1,60 +1,49 @@
-import requests
-from openai import OpenAI
-import os
-from io import BytesIO
+import streamlit as st
+from utils import (
+    download_video,
+    transcribe_audio,
+    analyze_accent
+)
+import uuid
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+st.set_page_config(page_title="Video İçerik Özeti", layout="centered")
+st.title("🧠 Video İçeriği ve Konuşma Özeti")
 
-def download_video(url, filename="video.mp4"):
-    r = requests.get(url, stream=True)
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-    return filename
+video_url = st.text_input("🎥 Video linkini buraya yapıştırın (MP4 formatında):")
 
-def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
+if st.button("📊 Analiz Et") and video_url:
+    with st.spinner("Video indiriliyor ve analiz ediliyor..."):
+        try:
+            video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
+            video_path = download_video(video_url, filename=video_filename)
 
-    if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
+            transcript = transcribe_audio(video_path)
 
-    with open(video_path, "rb") as f:
-        file_chunk = f.read(max_bytes)
+            (
+                accent,
+                confidence,
+                explanation,
+                summary,
+                clarity,
+                diction,
+                expressiveness,
+                presence,
+                tone,
+                suggestion
+            ) = analyze_accent(transcript)
 
-    from io import BytesIO
-    partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"
+            st.success("✅ Analiz Tamamlandı!")
 
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=partial_file
-    )
-    return transcript.text
+            st.markdown("### 📄 Video İçerik Özeti")
+            st.write(summary)
 
+            st.markdown("### 🎙️ Konuşma Analizi")
+            st.markdown(f"- **Clarity of Speech:** {clarity}/10")
+            st.markdown(f"- **Diction & Pronunciation:** {diction}/10")
+            st.markdown(f"- **Expressiveness:** {expressiveness}/10")
+            st.markdown(f"- **Confidence / Presence:** {presence}/10")
+            st.markdown(f"- **🎭 Emotional Tone:** _{tone}_")
+            st.markdown(f"- **💡 Suggestion for Improvement:** _{suggestion}_")
 
-def analyze_accent(transcript):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- Confidence score (0-100%)
-- Short 1-2 sentence explanation.
-
-Transcript:
-{transcript}
-"""
-            }
-        ]
-    )
-    answer = response.choices[0].message.content
-    lines = answer.strip().splitlines()
-    accent = lines[0].split(":")[-1].strip()
-    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-    explanation = lines[2].split(":", 1)[-1].strip()
-    return accent, confidence, explanation
-
+        except Exception as e:
+            st.error(f"❌ Hata oluştu:\n\n{str(e)}")
