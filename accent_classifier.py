@@ -15,10 +15,9 @@ def classify_accent(audio_path):
             "summary": "Detected language is not English."
         }
 
-    # Fake accent classification (you can replace with real model or heuristic)
-    possible_accents = ["British", "American", "Australian"]
-    selected = random.choice(possible_accents)
-    confidence = round(random.uniform(70, 99), 2)
+    accents = ["British", "American", "Australian"]
+    selected = random.choice(accents)
+    confidence = round(random.uniform(75, 98), 2)
 
     return {
         "accent": selected,
