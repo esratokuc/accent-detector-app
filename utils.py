@@ -14,14 +14,15 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    max_bytes = 25 * 1024 * 1024  # 25MB sınırı
+    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
 
     if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only a portion (max 25MB) will be analyzed.")
+        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
 
     with open(video_path, "rb") as f:
         file_chunk = f.read(max_bytes)
 
+    from io import BytesIO
     partial_file = BytesIO(file_chunk)
     partial_file.name = "partial.mp4"
 
@@ -30,6 +31,7 @@ def transcribe_audio(video_path):
         file=partial_file
     )
     return transcript.text
+
 
 def analyze_accent(transcript):
     response = client.chat.completions.create(
