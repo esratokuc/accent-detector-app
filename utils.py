@@ -1,5 +1,5 @@
 import requests
-from moviepy.editor import VideoFileClip
+import subprocess
 import openai
 import os
 
@@ -11,9 +11,9 @@ def download_video(url):
     return local_path
 
 def extract_audio(video_path):
-    clip = VideoFileClip(video_path)
     audio_path = "audio.wav"
-    clip.audio.write_audiofile(audio_path)
+    command = ["ffmpeg", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", audio_path]
+    subprocess.run(command, check=True)
     return audio_path
 
 def transcribe_audio(audio_path):
