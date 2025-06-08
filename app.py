@@ -1,34 +1,25 @@
 import streamlit as st
-import os
-import urllib.request
 from audio_utils import extract_audio
 from accent_classifier import classify_accent
+import os
 
-st.set_page_config(page_title="Accent Detector", layout="centered")
+st.set_page_config(page_title="Accent Detector", page_icon="🗣️")
 st.title("🗣️ English Accent Detector")
 
-video_url = st.text_input("🎥 Enter MP4 video URL:")
+uploaded_file = st.file_uploader("Upload a video file (.mp4)", type=["mp4"])
+if uploaded_file is not None:
+    with open("input_video.mp4", "wb") as f:
+        f.write(uploaded_file.read())
 
-if video_url:
-    try:
-        st.info("📥 Downloading video...")
-        video_path = os.path.join("/tmp", "input_video.mp4")
-        urllib.request.urlretrieve(video_url, video_path)
+    st.info("Extracting audio...")
+    audio_path = extract_audio("input_video.mp4")
 
-        st.success("✅ Video downloaded.")
-        st.info("🔊 Extracting audio...")
-        audio_path = extract_audio(video_path)
+    st.success("Audio extracted successfully. Classifying accent...")
 
-        if not os.path.exists(audio_path):
-            st.error("❌ Audio file was not created.")
-        else:
-            st.success("✅ Audio extracted.")
-            st.info("🧠 Running accent classification...")
-            result = classify_accent(audio_path)
+    with st.spinner("Analyzing..."):
+        result = classify_accent(audio_path)
 
-            st.subheader("🎯 Result")
-            st.write(f"**Accent:** {result['accent']}")
-            st.write(f"**Confidence:** {result['confidence']}%")
-            st.write(f"**Summary:** {result['summary']}")
-    except Exception as e:
-        st.error(f"⚠️ Error: {str(e)}")
+    st.subheader("🎯 Result")
+    st.markdown(f"**Accent:** {result['accent']}")
+    st.markdown(f"**Confidence:** {result['confidence']}%")
+    st.markdown(f"**Summary:** {result['summary']}")
