@@ -2,16 +2,14 @@ from faster_whisper import WhisperModel
 from openai import OpenAI
 import streamlit as st
 import json
-import random
 
-# GPT client
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# ✅ Doğru client yaratımı (openai>=1.0.0)
+client = OpenAI()
 
-# Whisper model (CPU uyumlu)
+# Whisper model yükleniyor
 model = WhisperModel("base", device="cpu")
 
 def classify_accent(audio_path):
-    # 1. Transcribe with Whisper
     segments, info = model.transcribe(audio_path)
     text = " ".join([segment.text for segment in segments])
     language = info.language
@@ -23,8 +21,8 @@ def classify_accent(audio_path):
             "summary": f"Detected language is {language.upper()}, not English."
         }
 
-    # 2. Ask GPT to classify accent, score, and summary
     try:
+        # ✅ Burada API anahtarı otomatik olarak ortamdan alınır (Streamlit secrets ile uyumlu)
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
@@ -45,7 +43,6 @@ Return your response in JSON format like:
             temperature=0.3
         )
 
-        # 3. Parse and return result
         gpt_reply = response.choices[0].message.content
         result = json.loads(gpt_reply)
         return result
@@ -54,5 +51,5 @@ Return your response in JSON format like:
         return {
             "accent": "Unknown",
             "confidence": 0,
-            "summary": f"Error communicating with GPT: {str(e)}"
+            "summary": f"Error: {str(e)}"
         }
