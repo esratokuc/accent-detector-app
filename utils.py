@@ -40,21 +40,67 @@ def analyze_accent(transcript):
             {
                 "role": "user",
                 "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- Confidence score (0-100%)
-- Short 1-2 sentence explanation.
+You are an expert communication analyst.
 
-Transcript:
-{transcript}
+TASKS:
+
+1. Summarize what the speaker is talking about in 2–4 formal sentences.
+2. Analyze the speaker on the following criteria (rate 0-10):
+   - Clarity of Speech
+   - Diction & Pronunciation
+   - Expressiveness
+   - Confidence / Presence
+3. Identify the **dominant emotional tone** of the speaker (e.g., serious, uplifting, calm, intense, passionate).
+4. Suggest one improvement to their speaking style.
+
+Use this exact format:
+
+Summary:
+...
+
+Clarity: ...
+Diction: ...
+Expressiveness: ...
+Confidence: ...
+Tone: ...
+Suggestion: ...
 """
             }
         ]
     )
-    answer = response.choices[0].message.content
-    lines = answer.strip().splitlines()
-    accent = lines[0].split(":")[-1].strip()
-    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-    explanation = lines[2].split(":", 1)[-1].strip()
-    return accent, confidence, explanation
+
+    answer = response.choices[0].message.content.strip()
+    lines = answer.splitlines()
+
+    def safe_int(text):
+        try:
+            return int(text.strip())
+        except:
+            return 0
+
+    summary_index = lines.index("Summary:") + 1
+    scores_index = next(i for i, line in enumerate(lines) if line.startswith("Clarity"))
+
+    summary = "\n".join(lines[summary_index:scores_index]).strip()
+
+    clarity = safe_int(lines[scores_index].split(":")[-1])
+    diction = safe_int(lines[scores_index + 1].split(":")[-1])
+    expressiveness = safe_int(lines[scores_index + 2].split(":")[-1])
+    presence = safe_int(lines[scores_index + 3].split(":")[-1])
+    tone = lines[scores_index + 4].split(":", 1)[-1].strip()
+    suggestion = lines[scores_index + 5].split(":", 1)[-1].strip()
+
+    # Geriye dummy accent/confidence/explanation döndür ki unpack işlemi bozulmasın
+    return (
+        "N/A",         # accent
+        0,             # confidence
+        "N/A",         # explanation
+        summary,
+        clarity,
+        diction,
+        expressiveness,
+        presence,
+        tone,
+        suggestion
+    )
 
