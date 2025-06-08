@@ -14,28 +14,27 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    # Uyarı ver: dosya boyutu çok büyükse
-    if os.path.getsize(video_path) > 25_000_000:
-        print("⚠️ Warning: File is large. Only first 5 minutes will be analyzed.")
+    max_bytes = 25 * 1024 * 1024  # 25MB
 
-    # Videodan sesi yükle
-    audio = AudioSegment.from_file(video_path)
+    # Uyarı ver: dosya büyükse
+    if os.path.getsize(video_path) > max_bytes:
+        print("⚠️ Warning: File is large. Only a portion (max 25MB) will be analyzed.")
 
-    # İlk 5 dakikayı al (300.000 ms)
-    max_duration_ms = 5 * 60 * 1000
-    short_audio = audio[:max_duration_ms]
+    # İlk 25MB kadarını oku
+    with open(video_path, "rb") as f:
+        file_chunk = f.read(max_bytes)
 
-    # Geçici dosyaya kaydet
-    temp_path = "short_audio.wav"
-    short_audio.export(temp_path, format="wav")
+    # Whisper'a gönder
+    from io import BytesIO
+    partial_file = BytesIO(file_chunk)
+    partial_file.name = "partial.mp4"  # Gerekli metadata
 
-    # OpenAI Whisper ile transkript
-    with open(temp_path, "rb") as f:
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f
-        )
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=partial_file
+    )
     return transcript.text
+
 
 def analyze_accent(transcript):
     response = client.chat.completions.create(
