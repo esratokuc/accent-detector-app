@@ -3,3 +3,4 @@ moviepy==1.0.3
 pydub==0.25.1
 openai-whisper==20230314
 langdetect==1.0.9
+imageio-ffmpeg==0.4.7
