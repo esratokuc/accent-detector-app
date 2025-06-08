@@ -33,6 +33,12 @@ def transcribe_audio(video_path):
     )
     return transcript.text
 
+def safe_int(text, default=0):
+    try:
+        return int(text.strip())
+    except:
+        return default
+
 def analyze_accent(transcript):
     """Sends the transcript to GPT-4 and extracts multiple structured analysis outputs."""
     prompt = f"""
@@ -93,13 +99,13 @@ YouTube-style description:
         return "\n".join(lines[start_index + 1:end_index]).strip()
 
     accent = extract_value("Accent")
-    confidence = int(extract_value("Confidence").replace("%", "") or 0)
+    confidence = safe_int(extract_value("Confidence"))
     explanation = extract_value("Explanation")
     summary = extract_block("Summary:", "Clarity")
-    clarity = int(extract_value("Clarity") or 0)
-    diction = int(extract_value("Diction") or 0)
-    expressiveness = int(extract_value("Expressiveness") or 0)
-    presence = int(extract_value("Confidence")) if "Confidence:" in [l.split(":")[0] for l in lines if ":" in l] else 0
+    clarity = safe_int(extract_value("Clarity"))
+    diction = safe_int(extract_value("Diction"))
+    expressiveness = safe_int(extract_value("Expressiveness"))
+    presence = safe_int(extract_value("Confidence"))
     tone = extract_value("Tone")
     suggestion = extract_value("Suggestion")
     video_description = extract_block("YouTube-style description:", "")
