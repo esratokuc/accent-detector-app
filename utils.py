@@ -1,7 +1,8 @@
 import requests
-import subprocess
-import openai
+from openai import OpenAI
 import os
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def download_video(url, filename="video.mp4"):
     r = requests.get(url, stream=True)
@@ -11,19 +12,21 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-def extract_audio(video_path):
-    audio_path = "audio.wav"
-    command = f'ffmpeg -i "{video_path}" -vn -acodec pcm_s16le -ar 44100 -ac 2 "{audio_path}"'
-    subprocess.run(command, shell=True, check=True)
-    return audio_path
-
 def transcribe_audio(video_path):
     with open(video_path, "rb") as f:
-        transcript = openai.Audio.transcribe("whisper-1", f)["text"]
-    return transcript
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f
+        )
+    return transcript.text
 
 def analyze_accent(transcript):
-    prompt = f"""
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""
 You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
 - The likely English accent (e.g., British, American, Indian, etc.)
 - Confidence score (0-100%)
@@ -32,11 +35,10 @@ You are an expert linguist specialized in English accents. Analyze the following
 Transcript:
 {transcript}
 """
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}]
+            }
+        ]
     )
-    answer = response["choices"][0]["message"]["content"]
+    answer = response.choices[0].message.content
     lines = answer.strip().splitlines()
     accent = lines[0].split(":")[-1].strip()
     confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
