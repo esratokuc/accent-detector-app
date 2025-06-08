@@ -1,12 +1,12 @@
-import whisper
+from faster_whisper import WhisperModel
 from langdetect import detect
 import random
 
-model = whisper.load_model("base")
+model = WhisperModel("base", device="cpu")
 
 def classify_accent(audio_path):
-    result = model.transcribe(audio_path)
-    text = result["text"]
+    segments, info = model.transcribe(audio_path)
+    text = " ".join([segment.text for segment in segments])
 
     if detect(text) != "en":
         return {
