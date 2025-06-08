@@ -77,8 +77,14 @@ Suggestion: ...
     answer = response.choices[0].message.content.strip()
     lines = answer.splitlines()
 
+    def safe_int(text):
+        try:
+            return int(text.strip())
+        except:
+            return 0
+
     accent = lines[0].split(":")[-1].strip()
-    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
+    confidence = safe_int(lines[1].split(":")[-1].replace("%", ""))
     explanation = lines[2].split(":", 1)[-1].strip()
 
     summary_index = lines.index("Summary:") + 1
@@ -86,10 +92,10 @@ Suggestion: ...
 
     summary = "\n".join(lines[summary_index:scores_index]).strip()
 
-    clarity = int(lines[scores_index].split(":")[-1].strip())
-    diction = int(lines[scores_index + 1].split(":")[-1].strip())
-    expressiveness = int(lines[scores_index + 2].split(":")[-1].strip())
-    presence = int(lines[scores_index + 3].split(":")[-1].strip())
+    clarity = safe_int(lines[scores_index].split(":")[-1])
+    diction = safe_int(lines[scores_index + 1].split(":")[-1])
+    expressiveness = safe_int(lines[scores_index + 2].split(":")[-1])
+    presence = safe_int(lines[scores_index + 3].split(":")[-1])
     tone = lines[scores_index + 4].split(":", 1)[-1].strip()
     suggestion = lines[scores_index + 5].split(":", 1)[-1].strip()
 
