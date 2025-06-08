@@ -1,39 +1,49 @@
-import streamlit as st
+
+import os
 from openai import OpenAI
 from faster_whisper import WhisperModel
 
-# OpenAI client with API key from secrets
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
-# Whisper model for transcription
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 model = WhisperModel("base", device="cpu", compute_type="int8")
 
-def classify_accent(audio_path: str):
-    segments, info = model.transcribe(audio_path)
-    transcript = " ".join([segment.text for segment in segments])
+def classify_accent(audio_path):
+    segments, info = model.transcribe(audio_path, beam_size=5)
+    transcription = " ".join([segment.text for segment in segments])
 
-    prompt = f"""Analyze the following English transcript. Determine the likely English accent (e.g., American, British, Australian), give a confidence score from 0 to 100%, and summarize the content.
-
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
-
-Respond in JSON format like:
-{{"accent": "British", "confidence": 85.2, "summary": "Speaker talked about their education and work."}}"""
-
-    response = client.chat.completions.create(
+    completion = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an English accent classification assistant. Analyze the text and determine whether the speaker has a British, American, or other English accent. Give a confidence score from 0 to 100 and provide a 1-sentence summary."
+            },
+            {"role": "user", "content": transcription}
+        ]
     )
 
-    try:
-        result = eval(response.choices[0].message.content)
-    except Exception:
-        result = {
-            "accent": "Unknown",
-            "confidence": 0,
-            "summary": "Failed to analyze."
-        }
+    message = completion.choices[0].message.content
 
-    return result
+    # Simple parsing (improve if needed)
+    accent = "Unknown"
+    confidence = 0
+    summary = message
+
+    if "American" in message:
+        accent = "American"
+    elif "British" in message:
+        accent = "British"
+    elif "Australian" in message:
+        accent = "Australian"
+    elif "Non-English" in message:
+        accent = "Non-English"
+
+    import re
+    match = re.search(r"(\d{1,3})%", message)
+    if match:
+        confidence = int(match.group(1))
+
+    return {
+        "accent": accent,
+        "confidence": confidence,
+        "summary": summary
+    }
