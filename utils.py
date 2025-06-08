@@ -3,12 +3,13 @@ import subprocess
 import openai
 import os
 
-def download_video(url):
-    local_path = "video.mp4"
-    r = requests.get(url)
-    with open(local_path, "wb") as f:
-        f.write(r.content)
-    return local_path
+def download_video(url, filename="video.mp4"):
+    r = requests.get(url, stream=True)
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+    return filename
 
 def extract_audio(video_path):
     audio_path = "audio.wav"
