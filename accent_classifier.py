@@ -1,5 +1,4 @@
 from faster_whisper import WhisperModel
-from langdetect import detect
 import random
 
 model = WhisperModel("base", device="cpu")
@@ -7,12 +6,13 @@ model = WhisperModel("base", device="cpu")
 def classify_accent(audio_path):
     segments, info = model.transcribe(audio_path)
     text = " ".join([segment.text for segment in segments])
+    language = info.language
 
-    if detect(text) != "en":
+    if language != "en":
         return {
             "accent": "Non-English",
             "confidence": 0,
-            "summary": "Detected language is not English."
+            "summary": f"Detected language is {language.upper()}, not English."
         }
 
     accents = ["British", "American", "Australian"]
