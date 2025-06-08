@@ -1,18 +1,14 @@
 import streamlit as st
-from utils import (
-    download_video,
-    transcribe_audio,
-    analyze_accent
-)
+from utils import download_video, transcribe_audio, analyze_accent
 import uuid
 
-st.set_page_config(page_title="Video İçerik Özeti", layout="centered")
-st.title("🧠 Video İçeriği ve Konuşma Özeti")
+st.set_page_config(page_title="Video and Accent Analyze", layout="centered")
+st.title("Video and Accent Analyze")
 
-video_url = st.text_input("🎥 Video linkini buraya yapıştırın (MP4 formatında):")
+video_url = st.text_input("Enter a public MP4 video URL:")
 
-if st.button("📊 Analiz Et") and video_url:
-    with st.spinner("Video indiriliyor ve analiz ediliyor..."):
+if st.button("Analyze"):
+    with st.spinner("Analyzing the video content and speaker style..."):
         try:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
@@ -32,18 +28,18 @@ if st.button("📊 Analiz Et") and video_url:
                 suggestion
             ) = analyze_accent(transcript)
 
-            st.success("✅ Analiz Tamamlandı!")
+            st.success("Analysis complete.")
 
-            st.markdown("### 📄 Video İçerik Özeti")
+            st.markdown("### Content Summary")
             st.write(summary)
 
-            st.markdown("### 🎙️ Konuşma Analizi")
+            st.markdown("### Speaking Style Evaluation")
             st.markdown(f"- **Clarity of Speech:** {clarity}/10")
             st.markdown(f"- **Diction & Pronunciation:** {diction}/10")
             st.markdown(f"- **Expressiveness:** {expressiveness}/10")
             st.markdown(f"- **Confidence / Presence:** {presence}/10")
-            st.markdown(f"- **🎭 Emotional Tone:** _{tone}_")
-            st.markdown(f"- **💡 Suggestion for Improvement:** _{suggestion}_")
+            st.markdown(f"- **Emotional Tone:** _{tone}_")
+            st.markdown(f"- **Improvement Suggestion:** _{suggestion}_")
 
         except Exception as e:
-            st.error(f"❌ Hata oluştu:\n\n{str(e)}")
+            st.error(f"An error occurred:\n\n{str(e)}")
