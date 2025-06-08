@@ -3,10 +3,10 @@ from openai import OpenAI
 import streamlit as st
 import json
 
-# ✅ Doğru client yaratımı (openai>=1.0.0)
-client = OpenAI()
+# ✅ Güvenli client bağlantısı — API key açıkça burada verilmeli çünkü Cloud'da bazen env çekmez
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# Whisper model yükleniyor
+# Whisper modeli
 model = WhisperModel("base", device="cpu")
 
 def classify_accent(audio_path):
@@ -22,7 +22,6 @@ def classify_accent(audio_path):
         }
 
     try:
-        # ✅ Burada API anahtarı otomatik olarak ortamdan alınır (Streamlit secrets ile uyumlu)
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
