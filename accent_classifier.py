@@ -3,7 +3,7 @@ from openai import OpenAI
 import streamlit as st
 import json
 
-# ✅ Güvenli client bağlantısı — API key açıkça burada verilmeli çünkü Cloud'da bazen env çekmez
+# Yeni OpenAI istemcisi
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # Whisper modeli
@@ -42,8 +42,7 @@ Return your response in JSON format like:
             temperature=0.3
         )
 
-        gpt_reply = response.choices[0].message.content
-        result = json.loads(gpt_reply)
+        result = json.loads(response.choices[0].message.content)
         return result
 
     except Exception as e:
