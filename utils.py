@@ -14,24 +14,22 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
+    max_bytes = 26_214_400 - 512  # Just under 25MB
 
     if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
+        print("⚠️ Large file detected. Only the first 25MB will be processed.")
 
     with open(video_path, "rb") as f:
         file_chunk = f.read(max_bytes)
 
-    from io import BytesIO
     partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"
+    partial_file.name = "audio.mp3"
 
     transcript = client.audio.transcriptions.create(
         model="whisper-1",
         file=partial_file
     )
     return transcript.text
-
 
 def analyze_accent(transcript):
     response = client.chat.completions.create(
@@ -40,21 +38,20 @@ def analyze_accent(transcript):
             {
                 "role": "user",
                 "content": f"""
-You are an expert communication analyst.
+You are a professional speech coach and linguistic analyst.
 
-TASKS:
+Please perform the following tasks for the provided transcript:
 
-1. Summarize what the speaker is talking about in 2–4 formal sentences.
-2. Analyze the speaker on the following criteria (rate 0-10):
+1. Provide a concise summary of what the speaker is talking about. Start this section with `Summary:` on a separate line.
+2. Rate the speaker from 0–10 on:
    - Clarity of Speech
    - Diction & Pronunciation
    - Expressiveness
    - Confidence / Presence
-3. Identify the **dominant emotional tone** of the speaker (e.g., serious, uplifting, calm, intense, passionate).
+3. Identify the emotional tone of the speaker.
 4. Suggest one improvement to their speaking style.
 
 Use this exact format:
-
 Summary:
 ...
 
@@ -78,10 +75,15 @@ Suggestion: ...
         except:
             return 0
 
-    summary_index = lines.index("Summary:") + 1
-    scores_index = next(i for i, line in enumerate(lines) if line.startswith("Clarity"))
+    summary_index = next((i for i, line in enumerate(lines) if line.strip().startswith("Summary:")), None)
+    if summary_index is None:
+        raise ValueError("Missing 'Summary:' section in GPT response.")
 
-    summary = "\n".join(lines[summary_index:scores_index]).strip()
+    scores_index = next((i for i, line in enumerate(lines) if line.startswith("Clarity")), None)
+    if scores_index is None:
+        raise ValueError("Missing score lines in GPT response.")
+
+    summary = "\n".join(lines[summary_index + 1 : scores_index]).strip()
 
     clarity = safe_int(lines[scores_index].split(":")[-1])
     diction = safe_int(lines[scores_index + 1].split(":")[-1])
@@ -90,11 +92,9 @@ Suggestion: ...
     tone = lines[scores_index + 4].split(":", 1)[-1].strip()
     suggestion = lines[scores_index + 5].split(":", 1)[-1].strip()
 
-    # Geriye dummy accent/confidence/explanation döndür ki unpack işlemi bozulmasın
+    # filler return values for unused parts
     return (
-        "N/A",         # accent
-        0,             # confidence
-        "N/A",         # explanation
+        "N/A", 0, "N/A",
         summary,
         clarity,
         diction,
@@ -103,4 +103,3 @@ Suggestion: ...
         tone,
         suggestion
     )
-
