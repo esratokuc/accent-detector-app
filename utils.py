@@ -12,8 +12,8 @@ def download_video(url):
 
 def extract_audio(video_path):
     audio_path = "audio.wav"
-    command = ["ffmpeg", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2", audio_path]
-    subprocess.run(command, check=True)
+    command = f'ffmpeg -i "{video_path}" -vn -acodec pcm_s16le -ar 44100 -ac 2 "{audio_path}"'
+    subprocess.run(command, shell=True, check=True)
     return audio_path
 
 def transcribe_audio(audio_path):
