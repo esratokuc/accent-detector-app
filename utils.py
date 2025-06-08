@@ -6,6 +6,7 @@ from io import BytesIO
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def download_video(url, filename="video.mp4"):
+    """Downloads a video file from a public URL and saves it locally."""
     r = requests.get(url, stream=True)
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
@@ -14,7 +15,8 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB sınırı - güvenli tampon
+    """Reads the first ~25MB of the video file and sends it to Whisper API for transcription."""
+    max_bytes = 26_214_400 - 512  # 25MB safe threshold
 
     if os.path.getsize(video_path) > max_bytes:
         print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
@@ -23,7 +25,7 @@ def transcribe_audio(video_path):
         file_chunk = f.read(max_bytes)
 
     partial_file = BytesIO(file_chunk)
-    partial_file.name = "audio.mp3"  # Whisper için güvenli format
+    partial_file.name = "audio.mp3"  # Safe extension for Whisper
 
     transcript = client.audio.transcriptions.create(
         model="whisper-1",
@@ -32,16 +34,11 @@ def transcribe_audio(video_path):
     return transcript.text
 
 def analyze_accent(transcript):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""
+    """Sends the transcript to GPT-4 and extracts multiple structured analysis outputs."""
+    prompt = f"""
 You are an expert communication analyst.
 
 TASKS:
-
 1. Identify the speaker's likely English accent (e.g., British, American, Indian, etc.)
 2. Give a confidence score (0-100%) for your accent guess.
 3. Briefly explain why you identified this accent (1-2 sentences).
@@ -55,40 +52,57 @@ TASKS:
 7. Suggest one improvement to their speaking style.
 8. Then finally, describe what kind of video this is, what activity is taking place, and what the speaker's main goal seems to be. Format it as a short YouTube-style description.
 
-Transcript:
-{transcript}
+Format your answer clearly with labels:
+Accent: ...
+Confidence: ...
+Explanation: ...
+
+Summary:
+...
+
+Clarity: ...
+Diction: ...
+Expressiveness: ...
+Confidence: ...
+Tone: ...
+Suggestion: ...
+
+YouTube-style description:
+...
 """
-            }
-        ]
+
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt.replace("{transcript}", transcript)}]
     )
 
     answer = response.choices[0].message.content.strip()
     lines = answer.splitlines()
 
-    def safe_int(text):
-        try:
-            return int(text.strip())
-        except:
-            return 0
+    def extract_value(label):
+        for line in lines:
+            if line.lower().startswith(label.lower() + ":"):
+                return line.split(":", 1)[-1].strip()
+        return "Not available"
 
-    accent = lines[0].split(":")[-1].strip()
-    confidence = safe_int(lines[1].split(":")[-1].replace("%", ""))
-    explanation = lines[2].split(":", 1)[-1].strip()
+    def extract_block(start_label, end_label):
+        start_index = next((i for i, line in enumerate(lines) if line.lower().startswith(start_label.lower())), -1)
+        end_index = next((i for i, line in enumerate(lines) if line.lower().startswith(end_label.lower())), len(lines))
+        if start_index == -1:
+            return "Not available"
+        return "\n".join(lines[start_index + 1:end_index]).strip()
 
-    summary_index = lines.index("Summary:") + 1
-    scores_index = next(i for i, line in enumerate(lines) if line.startswith("Clarity"))
-    video_description_index = next(i for i, line in enumerate(lines) if line.lower().startswith("youTube-style description".lower())) + 1
-
-    summary = "\n".join(lines[summary_index:scores_index]).strip()
-
-    clarity = safe_int(lines[scores_index].split(":")[-1])
-    diction = safe_int(lines[scores_index + 1].split(":")[-1])
-    expressiveness = safe_int(lines[scores_index + 2].split(":")[-1])
-    presence = safe_int(lines[scores_index + 3].split(":")[-1])
-    tone = lines[scores_index + 4].split(":", 1)[-1].strip()
-    suggestion = lines[scores_index + 5].split(":", 1)[-1].strip()
-
-    video_description = "\n".join(lines[video_description_index:]).strip()
+    accent = extract_value("Accent")
+    confidence = int(extract_value("Confidence").replace("%", "") or 0)
+    explanation = extract_value("Explanation")
+    summary = extract_block("Summary:", "Clarity")
+    clarity = int(extract_value("Clarity") or 0)
+    diction = int(extract_value("Diction") or 0)
+    expressiveness = int(extract_value("Expressiveness") or 0)
+    presence = int(extract_value("Confidence")) if "Confidence:" in [l.split(":")[0] for l in lines if ":" in l] else 0
+    tone = extract_value("Tone")
+    suggestion = extract_value("Suggestion")
+    video_description = extract_block("YouTube-style description:", "")
 
     return (
         accent,
