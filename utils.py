@@ -1,7 +1,7 @@
 import requests
 from openai import OpenAI
-from pydub import AudioSegment
 import os
+from io import BytesIO
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -14,27 +14,22 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    max_bytes = 25 * 1024 * 1024  # 25MB
+    max_bytes = 25 * 1024 * 1024  # 25MB sınırı
 
-    # Uyarı ver: dosya büyükse
     if os.path.getsize(video_path) > max_bytes:
         print("⚠️ Warning: File is large. Only a portion (max 25MB) will be analyzed.")
 
-    # İlk 25MB kadarını oku
     with open(video_path, "rb") as f:
         file_chunk = f.read(max_bytes)
 
-    # Whisper'a gönder
-    from io import BytesIO
     partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"  # Gerekli metadata
+    partial_file.name = "partial.mp4"
 
     transcript = client.audio.transcriptions.create(
         model="whisper-1",
         file=partial_file
     )
     return transcript.text
-
 
 def analyze_accent(transcript):
     response = client.chat.completions.create(
