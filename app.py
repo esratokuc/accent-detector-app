@@ -1,10 +1,8 @@
 import streamlit as st
-from utils import download_video, transcribe_audio, analyze_accent
+from utils import download_video, transcribe_audio, analyze_accent, export_results_to_pdf, send_email_with_pdf
 import uuid
 import os
 from dotenv import load_dotenv
-from fpdf import FPDF
-from utils import export_results_to_pdf, send_email_with_pdf
 
 # Load secrets if local
 load_dotenv()
@@ -51,15 +49,7 @@ if st.session_state.result:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             pdf_path = f"accent_report_{timestamp}.pdf"
 
-            content = ""
-            for idx, res in enumerate(st.session_state.result):
-                content += f"Segment {idx + 1}\n"
-                content += f"Accent: {res['accent']}\n"
-                content += f"Confidence Score: {res['confidence']}%\n"
-                content += f"Explanation: {res['explanation']}\n\n"
-
-            with open(pdf_path, "w") as f:
-                f.write(content)
+            export_results_to_pdf(st.session_state.result, pdf_path)
 
             sender_email = os.getenv("SENDER_EMAIL")
             sender_password = os.getenv("SENDER_PASSWORD")
