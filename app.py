@@ -2,6 +2,7 @@ import streamlit as st
 import uuid
 from utils import (
     download_video,
+    extract_audio,
     transcribe_audio_whisper,
     analyze_accent_local,
     export_results_to_pdf,
@@ -9,7 +10,7 @@ from utils import (
 )
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ English Accent Detector (Local Whisper + Keyword Analysis)")
+st.title("🎙️ English Accent Detector (Offline Whisper)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
@@ -18,33 +19,32 @@ if st.button("Analyze Accent") and video_url:
         try:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
+            audio_path = extract_audio(video_path)
 
-            transcript = transcribe_audio_whisper(video_path)
+            transcript = transcribe_audio_whisper(audio_path)
             results = analyze_accent_local(transcript)
 
             st.success("✅ Analysis Complete!")
             for idx, res in enumerate(results):
-                st.markdown(f"**Segment {idx + 1}:**")
+                st.markdown(f"**🎯 Segment {idx+1}:**")
                 st.markdown(f"- **Accent:** `{res['accent']}`")
                 st.markdown(f"- **Confidence:** `{res['confidence']}%`")
                 st.markdown(f"- **Explanation:** _{res['explanation']}_")
                 st.markdown("---")
 
-            st.info("🔎 Accent predictions are based on **keyword-based text analysis** only. Not a deep AI model.")
+            # PDF Export
+            pdf_file = export_results_to_pdf(results)
+            with open(pdf_file, "rb") as f:
+                st.download_button("📄 Download PDF Report", f, file_name=pdf_file)
 
-            # E-posta gönderme seçeneği
-            with st.form("email_form"):
-                st.markdown("📧 **Would you like to receive the results as a PDF via email?**")
-                recipient_email = st.text_input("Your Email")
-                sender_email = st.text_input("Sender Gmail")
-                sender_password = st.text_input("Sender App Password", type="password")
-                submit_email = st.form_submit_button("Send Email")
-
-                if submit_email:
-                    with st.spinner("📤 Generating and sending PDF..."):
-                        pdf_path = export_results_to_pdf(results)
-                        send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password)
-                        st.success(f"📩 PDF report sent to **{recipient_email}**!")
+            # Optional email
+            st.markdown("📧 If you want to receive the PDF via email:")
+            recipient_email = st.text_input("Your Email Address")
+            sender_email = st.text_input("Sender Gmail", type="password")
+            sender_pass = st.text_input("Sender Gmail Password", type="password")
+            if st.button("Send Report to My Email") and recipient_email:
+                send_email_with_pdf(recipient_email, pdf_file, sender_email, sender_pass)
+                st.success("📬 Email sent successfully!")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
