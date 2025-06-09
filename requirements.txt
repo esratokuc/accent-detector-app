@@ -1,7 +1,8 @@
 streamlit
 requests
 fpdf
-torch>=2.0.0
-transformers>=4.36.0
+email-validator
+torch==2.0.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+transformers
 whisper
 ffmpeg-python
