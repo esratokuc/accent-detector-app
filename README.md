@@ -13,7 +13,10 @@
 
 ## 📷 Screenshot
 
-![screenshot](docs/screenshot.png)
+<img width="892" alt="image" src="https://github.com/user-attachments/assets/fbbadef1-699b-452b-ad75-376b8a8f2499" />
+<img width="892" alt="image" src="https://github.com/user-attachments/assets/cd102077-190b-4d86-acba-e026c0b1a425" />
+
+
 
 ## 🛠️ Setup Instructions
 
