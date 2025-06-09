@@ -43,7 +43,7 @@ def analyze_accent(transcript):
 You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
 - The likely English accent (e.g., British, American, Indian, etc.)
 - Confidence score (0-100%)
-- Short 1-2 sentence explanation.
+- Short 2-3 sentence explanation of video.
 
 Transcript:
 {transcript}
