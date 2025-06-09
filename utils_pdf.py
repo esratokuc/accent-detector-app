@@ -1,92 +1,53 @@
-import requests
-from openai import OpenAI
+from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
 import os
-from io import BytesIO
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def export_results_to_pdf(results, output_path="accent_report.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
 
-def download_video(url, filename="video.mp4"):
-    r = requests.get(url, stream=True)
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-    return filename
+    pdf.cell(200, 10, txt="Accent & Emotion Report", ln=True, align="C")
+    pdf.ln(10)
 
-def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
+    # Speaker summary
+    for spk, data in results.items():
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(200, 10, txt=f"{spk}", ln=True)
+        pdf.set_font("Arial", size=11)
+        pdf.multi_cell(0, 10, txt=f"Accent: {data['accent']}\nSentiment: {data['sentiment']}\nSummary: {data['explanation']}\n")
+        pdf.ln(5)
 
-    if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
+    # Full transcript
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(200, 10, txt="Full Transcript", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.ln(5)
 
-    with open(video_path, "rb") as f:
-        file_chunk = f.read(max_bytes)
+    for spk, data in results.items():
+        for seg in data["segments"]:
+            start = seg.get("start", 0)
+            end = seg.get("end", 0)
+            text = seg["text"]
+            time_range = f"[{start / 1000:.2f}s - {end / 1000:.2f}s]"
+            pdf.multi_cell(0, 10, txt=f"{time_range} {spk}: {text}")
+            pdf.ln(2)
 
-    partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"
+    pdf.output(output_path)
+    return output_path
 
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=partial_file
-    )
-    return transcript.text
+def send_email_with_attachment(to_email, file_path, from_email, app_password):
+    msg = EmailMessage()
+    msg["Subject"] = "Accent Analysis Report"
+    msg["From"] = from_email
+    msg["To"] = to_email
+    msg.set_content("Please find the attached accent analysis report.")
 
-def split_transcript_by_segments(transcript, segment_length=150):
-    words = transcript.split()
-    segments = [' '.join(words[i:i + segment_length]) for i in range(0, len(words), segment_length)]
-    return segments
+    with open(file_path, "rb") as f:
+        msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename="accent_report.pdf")
 
-def analyze_accent(transcript):
-    segments = split_transcript_by_segments(transcript)
-    results = []
-
-    for i, segment in enumerate(segments):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following English speech transcript segment and determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- A confidence score (0-100%)
-- A short 2-3 sentence explanation about this speech.
-
-Format your response exactly as:
-Accent: ...
-Confidence Score: ...%
-Explanation: ...
----
-Segment:
-{segment}
-"""
-                    }
-                ]
-            )
-
-            answer = response.choices[0].message.content.strip()
-            lines = answer.splitlines()
-
-            def get_line_value(label):
-                line = next((l for l in lines if l.startswith(label)), None)
-                return line.split(":", 1)[-1].strip() if line else "Not available"
-
-            accent = get_line_value("Accent")
-            confidence = get_line_value("Confidence Score").replace("%", "").strip()
-            explanation = get_line_value("Explanation")
-
-            results.append({
-                "accent": accent or "Not available",
-                "confidence": confidence or "Not available",
-                "explanation": explanation or "Not available"
-            })
-
-        except Exception as e:
-            results.append({
-                "accent": "Not available",
-                "confidence": "Not available",
-                "explanation": "Not available"
-            })
-
-    return results
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(from_email, app_password)
+        smtp.send_message(msg)
