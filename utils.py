@@ -38,25 +38,26 @@ def split_transcript_by_segments(transcript, segment_length=150):
     return segments
 
 def analyze_accent(transcript):
-    segments = split_transcript_by_segments(transcript)
-    results = []
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {
+                "role": "user",
+                "content": f"""
+You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
+- The likely English accent (e.g., British, American, Indian, etc.)
+- Confidence score (0-100%)
+- Short 2-3 sentence explanation of Video.
 
-    for i, segment in enumerate(segments):
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following segment from a multi-speaker English conversation. Identify distinct accents if possible:
-
-Segment:
-{segment}
+Transcript:
+{transcript}
 """
-                }
-            ]
-        )
-        answer = response.choices[0].message.content.strip()
-        results.append((i + 1, segment, answer))
-
-    return results
+            }
+        ]
+    )
+    answer = response.choices[0].message.content
+    lines = answer.strip().splitlines()
+    accent = lines[0].split(":")[-1].strip()
+    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
+    explanation = lines[2].split(":", 1)[-1].strip()
+    return accent, confidence, explanation  # ✅ dikkat!
