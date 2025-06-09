@@ -2,9 +2,6 @@ import requests
 from openai import OpenAI
 import os
 from io import BytesIO
-from fpdf import FPDF
-import smtplib
-from email.message import EmailMessage
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -34,6 +31,12 @@ def transcribe_audio(video_path):
     )
     return transcript.text
 
+def split_transcript_by_segments(transcript, segment_length=150):
+    # Split transcript into segments of ~segment_length words
+    words = transcript.split()
+    segments = [' '.join(words[i:i + segment_length]) for i in range(0, len(words), segment_length)]
+    return segments
+
 def analyze_accent(transcript):
     response = client.chat.completions.create(
         model="gpt-4",
@@ -58,38 +61,3 @@ Transcript:
     confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
     explanation = lines[2].split(":", 1)[-1].strip()
     return accent, confidence, explanation
-
-def export_results_to_pdf(accent, confidence, explanation, transcript, output_file="accent_report.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
-    pdf.ln(10)
-
-    pdf.multi_cell(0, 10, txt=f"""
-Accent: {accent}
-Confidence Score: {confidence}%
-Explanation: {explanation}
-
-Transcript:
-{transcript}
-""")
-    pdf.output(output_file)
-    return output_file
-
-def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
-    msg = EmailMessage()
-    msg["Subject"] = "Accent Detection Report"
-    msg["From"] = sender_email
-    msg["To"] = recipient_email
-    msg.set_content("Please find the attached accent analysis report.")
-
-    with open(pdf_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(pdf_path)
-
-    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(sender_email, sender_password)
-        smtp.send_message(msg)
