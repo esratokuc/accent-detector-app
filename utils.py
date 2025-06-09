@@ -2,8 +2,13 @@ import requests
 from openai import OpenAI
 import os
 from io import BytesIO
+import streamlit as st
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+try:
+    client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+except KeyError:
+    raise ValueError("❌ 'OPENAI_API_KEY' not found in Streamlit secrets.")
+
 
 def download_video(url, filename="video.mp4"):
     r = requests.get(url, stream=True)
