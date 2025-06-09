@@ -1,7 +1,4 @@
 streamlit
+openai>=1.0.0
 requests
 fpdf
-python-dotenv
-whisper
-torch
-torchaudio
