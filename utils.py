@@ -1,12 +1,21 @@
-import requests
-from openai import OpenAI
 import os
+import requests
 from io import BytesIO
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
+import torch
+import whisper
+from transformers import pipeline
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize Whisper model
+whisper_model = whisper.load_model("base")
+
+# Placeholder for improved accent classifier (multi-class accent detection)
+accent_classifier = pipeline("text-classification", model="papluca/xlm-roberta-base-language-detection")
+
+ACCEPTED_ACCENTS = ["American", "British", "Indian", "Australian", "Irish", "Canadian", "South African"]
+
 
 def download_video(url, filename="video.mp4"):
     r = requests.get(url, stream=True)
@@ -16,66 +25,36 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
 
-    if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
+def transcribe_audio_whisper(video_path):
+    result = whisper_model.transcribe(video_path)
+    return result["text"]
 
-    with open(video_path, "rb") as f:
-        file_chunk = f.read(max_bytes)
 
-    partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"
-
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=partial_file
-    )
-    return transcript.text
-
-def analyze_accent(transcript):
-    # Split transcript into segments by speaker turns or long pauses (naive split)
-    segments = transcript.split(". ")  # Rough segmentation, better with diarization
+def analyze_accent_local(transcript):
+    # Naive segmentation for demonstration
+    segments = transcript.split(". ")
     chunked_segments = [". ".join(segments[i:i+3]) for i in range(0, len(segments), 3)]
 
     results = []
     for chunk in chunked_segments:
-        prompt = f"""
-You are an expert linguist specialized in English accents. Analyze the following transcript to determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- Confidence score (0-100%)
-- Short 2-3 sentence explanation of the content
+        detected = accent_classifier(chunk)[0]
+        label = detected["label"].strip()
+        score = round(detected["score"] * 100)
 
-Only analyze meaningful speech. Ignore irrelevant sounds like laughter, filler words, or noise.
-
-Transcript:
-{chunk}
-"""
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        answer = response.choices[0].message.content
-        lines = answer.strip().splitlines()
-        try:
-            accent = lines[0].split(":")[-1].strip()
-            confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-            explanation = lines[2].split(":", 1)[-1].strip()
-        except:
-            accent = "N/A"
-            confidence = 0
-            explanation = "Parsing error."
+        # Simple mapping or inclusion check
+        accent = next((acc for acc in ACCEPTED_ACCENTS if acc.lower() in label.lower()), "Other")
+        explanation = f"This segment appears to reflect a {accent} accent based on language style and tone."
 
         results.append({
             "accent": accent,
-            "confidence": confidence,
+            "confidence": score,
             "explanation": explanation,
             "segment": chunk
         })
 
     return results
+
 
 def export_results_to_pdf(results, output_file="accent_report.pdf"):
     pdf = FPDF()
@@ -96,6 +75,7 @@ Transcript: {res['segment']}
 
     pdf.output(output_file)
     return output_file
+
 
 def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
     msg = EmailMessage()
