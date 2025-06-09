@@ -1,8 +1,7 @@
-streamlit
-requests
-fpdf
-email-validator
-torch==2.0.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
-transformers
+torch==2.0.1+cpu
+torchaudio==2.0.2
 whisper
-ffmpeg-python
+streamlit
+fpdf
+requests
+python-dotenv
