@@ -1,6 +1,3 @@
 streamlit
-torch
-torchaudio
-whisper
-moviepy
-fpdf
+requests
+scikit-learn
