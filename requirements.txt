@@ -1,7 +1,5 @@
-torch==2.0.1+cpu
-torchaudio==2.0.2
-whisper
-streamlit
+torch==2.0.1
+torchaudio==2.0.1
+openai-whisper
 fpdf
 requests
-python-dotenv
