@@ -10,7 +10,7 @@ import uuid
 import os
 from dotenv import load_dotenv
 
-# Load secrets if local
+# Load secrets locally if available
 load_dotenv()
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
@@ -18,9 +18,8 @@ st.title("🎙️ English Accent Detector (via URL)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-# Store results in session
-if "result" not in st.session_state:
-    st.session_state.result = None
+if "results" not in st.session_state:
+    st.session_state.results = None
 
 if st.button("Analyze Accent") and video_url:
     with st.spinner("🔄 Downloading and analyzing video..."):
@@ -31,33 +30,34 @@ if st.button("Analyze Accent") and video_url:
             transcript = transcribe_audio(video_path)
             results = analyze_accent(transcript)
 
-            st.session_state.result = {
-                "results": results,
+            st.session_state.results = {
+                "segments": results,
                 "transcript": transcript
             }
 
             st.success("✅ Analysis Complete!")
-
-            for idx, res in enumerate(results):
-                st.markdown(f"### 🧩 Segment {idx + 1}")
-                st.markdown(f"**🗣️ Detected Accent:** `{res['accent']}`")
-                st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
-                st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
-                st.markdown("---")
+            for idx, segment in enumerate(results, 1):
+                st.markdown(f"""
+**🧩 Segment {idx}**
+- **🗣️ Detected Accent:** `{segment.get('accent', 'Not available')}`
+- **📊 Confidence Score:** `{segment.get('confidence', 'Not available')}%`
+- **🧠 Explanation:** _{segment.get('explanation', 'Not available')}_  
+""")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-# Show PDF + email area after analysis
-if st.session_state.result:
+# PDF + Mail alanı sadece analiz yapılmışsa görünür
+if st.session_state.results:
     st.subheader("📧 Get Report by Email")
     recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
     if st.button("📤 Send PDF Report") and recipient_email:
         try:
+            # PDF dosyasını oluştur
             pdf_path = export_results_to_pdf(
-                st.session_state.result["results"],
-                st.session_state.result["transcript"]
+                st.session_state.results["segments"],
+                st.session_state.results["transcript"]
             )
 
             sender_email = os.getenv("SENDER_EMAIL")
