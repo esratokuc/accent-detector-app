@@ -1,42 +1,65 @@
 import streamlit as st
+from utils import (
+    download_video,
+    transcribe_audio,
+    analyze_accent_segments,
+    export_results_to_pdf,
+    send_email_with_pdf
+)
+import uuid
 import os
-from utils import download_video, transcribe_audio_whisper, segment_speakers_and_analyze, export_results_to_pdf
+from dotenv import load_dotenv
 
-st.set_page_config(page_title="English Accent Detector", layout="centered")
+load_dotenv()
+st.set_page_config(page_title="Accent Detector", layout="centered")
 st.title("🎙️ English Accent Detector (via URL)")
-st.markdown("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-video_url = st.text_input("Video URL")
+video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-temp_video_path = "temp_video.mp4"
+if "result" not in st.session_state:
+    st.session_state.result = None
 
-if st.button("Analyze") and video_url:
-    with st.spinner("📥 Downloading video..."):
-        download_video(video_url, temp_video_path)
+if st.button("Analyze Accent") and video_url:
+    with st.spinner("🔄 Downloading and analyzing video..."):
+        try:
+            video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
+            video_path = download_video(video_url, filename=video_filename)
 
-    with st.spinner("🧠 Transcribing and analyzing..."):
-        transcription = transcribe_audio_whisper(temp_video_path)
-        analysis_results = segment_speakers_and_analyze(transcription)
+            transcription = transcribe_audio(video_path)
+            analysis_segments = analyze_accent_segments(transcription)
 
-    st.success("✅ Analysis Complete!")
+            st.session_state.result = analysis_segments
 
-    for idx, result in enumerate(analysis_results):
-        st.markdown(f"""
-        ### 🧩 Segment {idx + 1}
-        - 🗣️ **Detected Accent:** {result['accent']}
-        - 📊 **Confidence Score:** {result['confidence']}%
-        - 😊 **Sentiment:** {result['sentiment']}
-        - 🧠 **Explanation:** {result['explanation']}
-        - 📜 **Transcript:** {result['segment']}
-        """)
+            st.success("✅ Analysis Complete!")
+            for idx, segment in enumerate(analysis_segments):
+                st.markdown(f"""
+### 🎤 Segment {idx + 1}
+- 🗣️ **Accent**: `{segment['accent']}`
+- 📊 **Confidence**: `{segment['confidence']}%`
+- 🧠 **Summary**: _{segment['explanation']}_
+- ❤️ **Sentiment**: `{segment['sentiment']}`
+- 📋 **Transcript**: {segment['segment']}
+""")
+        except Exception as e:
+            st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-    with st.spinner("📄 Generating PDF report..."):
-        report_path = export_results_to_pdf(analysis_results)
+if st.session_state.result:
+    st.subheader("📧 Get Report by Email")
+    recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
-    with open(report_path, "rb") as file:
-        st.download_button(
-            label="📥 Download PDF Report",
-            data=file,
-            file_name="accent_analysis_report.pdf",
-            mime="application/pdf"
-        )
+    if st.button("📤 Send PDF Report") and recipient_email:
+        try:
+            pdf_path = export_results_to_pdf(st.session_state.result)
+
+            sender_email = os.getenv("SENDER_EMAIL")
+            sender_password = os.getenv("SENDER_PASSWORD")
+
+            send_email_with_pdf(
+                recipient_email,
+                pdf_path,
+                sender_email,
+                sender_password
+            )
+            st.success(f"📩 Report sent to {recipient_email}")
+        except Exception as e:
+            st.error(f"❌ Failed to send email:\n\n{str(e)}")
