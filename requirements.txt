@@ -1,6 +1,9 @@
 streamlit
+requests
+assemblyai
 openai
+fpdf
+moviepy
+python-dotenv
 transformers
 torch
-fpdf
-python-dotenv
