@@ -1,23 +1,21 @@
-import requests
 import os
-from io import BytesIO
+import torch
+import whisper
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
 from moviepy.editor import VideoFileClip
-import whisper
 
-# Whisper model yükle
+# Whisper modeli yükle
 whisper_model = whisper.load_model("base")
 
 def download_video(url, filename="video.mp4"):
+    import requests
     r = requests.get(url, stream=True)
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
-    if os.path.getsize(filename) < 1024:
-        raise ValueError("⚠️ Video dosyası çok küçük veya boş.")
     return filename
 
 def extract_audio(video_path, audio_path="audio.wav"):
@@ -25,10 +23,7 @@ def extract_audio(video_path, audio_path="audio.wav"):
     clip.audio.write_audiofile(audio_path)
     return audio_path
 
-def transcribe_audio_whisper(video_path):
-    audio_path = extract_audio(video_path)
-    if os.path.getsize(audio_path) < 1024:
-        raise ValueError("⚠️ Ses dosyası boş.")
+def transcribe_audio_whisper(audio_path):
     result = whisper_model.transcribe(audio_path)
     return result["text"]
 
