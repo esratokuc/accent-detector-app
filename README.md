@@ -69,6 +69,14 @@ accent-detector-app/
 - No video data or API keys are stored.
 - Only official APIs (OpenAI + AssemblyAI) are used for processing.
 
+## 📹 Sample Video Links 
+
+- [Inside Emma Watson's Backpack.](https://drive.google.com/uc?export=download&id=1KQQURtOFeZvJCvAA6pjBIS6W4wtuKLxw)
+- [Introduction to Discrete Mathematics](https://drive.google.com/uc?export=download&id=1ljgjAOPViNJWW5v-pvkqtf2_U3P5x5Bh    )
+- [The Powers of Perception & Image | Reggie Brown | TEDxOakland](https://drive.google.com/uc?export=download&id=1F3L4AVpFMCe8pm_eR50bRlOqtfjmtVIP )
+- [Emily Blunt's Kids Are Picking Up Their Dad's American Accent](https://drive.google.com/uc?export=download&id=1bmrhmDBjLKlCtLWsGvx2N57IXCbvgVCe)
+
+
 ## 📄 License
 
 MIT License. © 2025
