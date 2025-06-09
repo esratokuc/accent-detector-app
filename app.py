@@ -1,77 +1,95 @@
-import streamlit as st
-from utils import download_video, transcribe_audio_whisper, analyze_accent_local
-import uuid
 import os
-from dotenv import load_dotenv
+import requests
+from io import BytesIO
 from fpdf import FPDF
-from utils import export_results_to_pdf, send_email_with_pdf
+import smtplib
+from email.message import EmailMessage
+import torch
+import whisper
+from transformers import pipeline
 
-# Load secrets if local
-load_dotenv()
+# Initialize Whisper model
+whisper_model = whisper.load_model("base")
 
-st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ English Accent Detector (via URL)")
+# Placeholder for improved accent classifier (multi-class accent detection)
+accent_classifier = pipeline("text-classification", model="papluca/xlm-roberta-base-language-detection")
 
-video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
+ACCEPTED_ACCENTS = ["American", "British", "Indian", "Australian", "Irish", "Canadian", "South African"]
 
-# Bellekte analiz sonucu tutulsun
-if "result" not in st.session_state:
-    st.session_state.result = None
 
-if st.button("Analyze Accent") and video_url:
-    with st.spinner("🔄 Downloading and analyzing video..."):
-        try:
-            video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
-            video_path = download_video(video_url, filename=video_filename)
+def download_video(url, filename="video.mp4"):
+    r = requests.get(url, stream=True)
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+    return filename
 
-            transcript = transcribe_audio_whisper(video_path)
-            results = analyze_accent_local(transcript)
 
-            st.session_state.result = results
+def transcribe_audio_whisper(video_path):
+    result = whisper_model.transcribe(video_path)
+    return result["text"]
 
-            st.success("✅ Analysis Complete!")
-            for idx, res in enumerate(results):
-                st.markdown(f"### 🧩 Segment {idx + 1}")
-                st.markdown(f"**🗣️ Detected Accent:** `{res['accent']}`")
-                st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
-                st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
 
-            st.info("🔎 Accent predictions are based on **text analysis** only. In multi-speaker videos, different accents may be detected per segment.")
+def analyze_accent_local(transcript):
+    # Naive segmentation for demonstration
+    segments = transcript.split(". ")
+    chunked_segments = [". ".join(segments[i:i+3]) for i in range(0, len(segments), 3)]
 
-        except Exception as e:
-            st.error(f"❌ An error occurred:\n\n{str(e)}")
+    results = []
+    for chunk in chunked_segments:
+        detected = accent_classifier(chunk)[0]
+        label = detected["label"].strip()
+        score = round(detected["score"] * 100)
 
-# PDF + Mail alanı sadece analiz yapılmışsa görünür
-if st.session_state.result:
-    st.subheader("📧 Get Report by Email")
-    recipient_email = st.text_input("Enter your email to receive the PDF report:")
+        # Simple mapping or inclusion check
+        accent = next((acc for acc in ACCEPTED_ACCENTS if acc.lower() in label.lower()), "Other")
+        explanation = f"This segment appears to reflect a {accent} accent based on language style and tone."
 
-    if st.button("📤 Send PDF Report") and recipient_email:
-        try:
-            # PDF dosyasını oluştur
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            pdf_path = f"accent_report_{timestamp}.pdf"
+        results.append({
+            "accent": accent,
+            "confidence": score,
+            "explanation": explanation,
+            "segment": chunk
+        })
 
-            content = ""
-            for idx, res in enumerate(st.session_state.result):
-                content += f"Segment {idx + 1}\n"
-                content += f"Accent: {res['accent']}\n"
-                content += f"Confidence Score: {res['confidence']}%\n"
-                content += f"Explanation: {res['explanation']}\n\n"
+    return results
 
-            with open(pdf_path, "w") as f:
-                f.write(content)
 
-            sender_email = os.getenv("SENDER_EMAIL")
-            sender_password = os.getenv("SENDER_PASSWORD")
+def export_results_to_pdf(results, output_file="accent_report.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
+    pdf.ln(10)
 
-            send_email_with_pdf(
-                recipient_email,
-                pdf_path,
-                sender_email,
-                sender_password
-            )
-            st.success(f"📩 Report sent to {recipient_email}")
-        except Exception as e:
-            st.error(f"❌ Failed to send email:\n\n{str(e)}")
+    for idx, res in enumerate(results):
+        pdf.multi_cell(0, 10, txt=f"""
+Segment {idx + 1}:
+Accent: {res['accent']}
+Confidence Score: {res['confidence']}%
+Explanation: {res['explanation']}
+Transcript: {res['segment']}
+""")
+        pdf.ln(5)
+
+    pdf.output(output_file)
+    return output_file
+
+
+def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
+    msg = EmailMessage()
+    msg["Subject"] = "Accent Detection Report"
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
+    msg.set_content("Please find the attached accent analysis report.")
+
+    with open(pdf_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(pdf_path)
+
+    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(msg)
