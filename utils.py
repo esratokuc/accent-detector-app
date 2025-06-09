@@ -1,44 +1,94 @@
-from fpdf import FPDF
-import smtplib
-from email.message import EmailMessage
+import requests
+import tempfile
 import os
+import assemblyai as aai
+from openai import OpenAI
 
-def generate_pdf_report(results_dict, full_transcript, output_path="accent_analysis_report.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+aai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    pdf.cell(200, 10, txt="English Accent Analysis Report", ln=True, align="C")
-    pdf.ln(10)
-
-    for speaker, data in results_dict.items():
-        pdf.set_font("Arial", style="B", size=12)
-        pdf.cell(0, 10, txt=f"{speaker}", ln=True)
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, txt=f"Accent: {data['accent']}")
-        pdf.multi_cell(0, 10, txt=f"Confidence: {data['confidence']}%")
-        pdf.multi_cell(0, 10, txt=f"Emotion: {data['sentiment']}")
-        pdf.multi_cell(0, 10, txt=f"Summary: {data['explanation']}")
-        pdf.ln(5)
-
-    pdf.set_font("Arial", style="B", size=12)
-    pdf.cell(0, 10, txt="Full Transcript", ln=True)
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, txt=full_transcript)
-
-    pdf.output(output_path)
+def download_video(url, output_path="video.mp4"):
+    response = requests.get(url, stream=True)
+    with open(output_path, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
     return output_path
 
-def send_report_email(to_email, pdf_path, sender_email, sender_password):
-    msg = EmailMessage()
-    msg['Subject'] = 'English Accent Analysis Report'
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    msg.set_content('Attached is your accent analysis PDF report.')
+def transcribe_with_speaker_labels(video_path):
+    transcriber = aai.Transcriber()
+    config = aai.TranscriptionConfig(speaker_labels=True)
+    transcript = transcriber.transcribe(video_path, config=config)
+    return transcript
 
-    with open(pdf_path, 'rb') as f:
-        msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=os.path.basename(pdf_path))
+def group_transcript_by_speaker(transcript_obj):
+    speaker_map = {}
+    full_text = ""
 
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(sender_email, sender_password)
-        smtp.send_message(msg)
+    for utterance in transcript_obj.utterances:
+        spk = f"Speaker {utterance.speaker}"
+        if spk not in speaker_map:
+            speaker_map[spk] = []
+        segment_text = utterance.text.strip()
+        speaker_map[spk].append(segment_text)
+        full_text += segment_text + " "
+
+    for speaker in speaker_map:
+        speaker_map[speaker] = " ".join(speaker_map[speaker])
+
+    return speaker_map, full_text.strip()
+
+def analyze_with_openai(text):
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {
+                "role": "system",
+                "content": "You are an expert linguist and psychologist. Given a text from a speaker, identify their English accent, emotional tone, and provide a brief explanation of what they're talking about."
+            },
+            {
+                "role": "user",
+                "content": f"""
+TEXT: {text}
+
+Please answer in this format:
+Accent: ...
+Confidence: ...%
+Sentiment: ...
+Explanation: ...
+"""
+            }
+        ]
+    )
+
+    content = response.choices[0].message.content
+    lines = content.splitlines()
+
+    def extract_value(label):
+        for line in lines:
+            if line.lower().startswith(label.lower()):
+                return line.split(":", 1)[-1].strip()
+        return "Unknown"
+
+    return {
+        "accent": extract_value("Accent"),
+        "confidence": extract_value("Confidence").replace("%", ""),
+        "sentiment": extract_value("Sentiment"),
+        "explanation": extract_value("Explanation")
+    }
+
+def process_video_and_analyze(video_url):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+        video_path = download_video(video_url, tmp.name)
+
+    transcript_obj = transcribe_with_speaker_labels(video_path)
+    grouped_speakers, full_text = group_transcript_by_speaker(transcript_obj)
+
+    results = {}
+    for speaker, text in grouped_speakers.items():
+        analysis = analyze_with_openai(text)
+        results[speaker] = {
+            "segment": text,
+            **analysis
+        }
+
+    return results, full_text
