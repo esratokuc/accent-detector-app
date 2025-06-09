@@ -5,8 +5,16 @@ import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# API anahtarlarını streamlit secrets'tan al
-ASSEMBLYAI_API_KEY = st.secrets["ASSEMBLYAI_API_KEY"]
+# Güvenli API alma (hem local hem Streamlit Cloud uyumlu)
+ASSEMBLYAI_API_KEY = (
+    os.getenv("ASSEMBLYAI_API_KEY")
+    or st.secrets["ASSEMBLYAI_API_KEY"]
+    if "ASSEMBLYAI_API_KEY" in st.secrets
+    else None
+)
+
+if ASSEMBLYAI_API_KEY is None:
+    raise ValueError("❌ ASSEMBLYAI_API_KEY not found in secrets or environment variables.")
 
 def download_video(url, filename="video.mp4"):
     """MP4 formatında videoyu indirir"""
