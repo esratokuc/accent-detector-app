@@ -1,60 +1,25 @@
-import requests
-from openai import OpenAI
-import os
-from io import BytesIO
+import streamlit as st
+from utils import download_video, transcribe_audio, analyze_accent
+import uuid
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+st.set_page_config(page_title="Accent Detector", layout="centered")
+st.title("🎙️ English Accent Detector (via URL)")
 
-def download_video(url, filename="video.mp4"):
-    r = requests.get(url, stream=True)
-    with open(filename, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-    return filename
+video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
+if st.button("Analyze Accent") and video_url:
+    with st.spinner("🔄 Downloading and analyzing video..."):
+        try:
+            video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
+            video_path = download_video(video_url, filename=video_filename)
 
-    if os.path.getsize(video_path) > max_bytes:
-        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
+            transcript = transcribe_audio(video_path)
+            accent, confidence, explanation = analyze_accent(transcript)
 
-    with open(video_path, "rb") as f:
-        file_chunk = f.read(max_bytes)
+            st.success("✅ Analysis Complete!")
+            st.markdown(f"**🗣️ Detected Accent:** `{accent}`")
+            st.markdown(f"**📊 Confidence Score:** `{confidence}%`")
+            st.markdown(f"**🧠 Explanation:** _{explanation}_")
 
-    from io import BytesIO
-    partial_file = BytesIO(file_chunk)
-    partial_file.name = "partial.mp4"
-
-    transcript = client.audio.transcriptions.create(
-        model="whisper-1",
-        file=partial_file
-    )
-    return transcript.text
-
-
-def analyze_accent(transcript):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- Confidence score (0-100%)
-- Short 1-2 sentence explanation.
-
-Transcript:
-{transcript}
-"""
-            }
-        ]
-    )
-    answer = response.choices[0].message.content
-    lines = answer.strip().splitlines()
-    accent = lines[0].split(":")[-1].strip()
-    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-    explanation = lines[2].split(":", 1)[-1].strip()
-    return accent, confidence, explanation
-
+        except Exception as e:
+            st.error(f"❌ An error occurred:\n\n{str(e)}")
