@@ -1,16 +1,12 @@
 import streamlit as st
-from utils import (
-    download_video,
-    transcribe_audio,
-    analyze_accent,
-    export_results_to_pdf,
-    send_email_with_pdf
-)
+from utils import download_video, transcribe_audio, analyze_accent
 import uuid
 import os
 from dotenv import load_dotenv
+from fpdf import FPDF
+from utils import export_results_to_pdf, send_email_with_pdf
 
-# Load secrets locally if available
+# Load secrets if local
 load_dotenv()
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
@@ -18,8 +14,9 @@ st.title("🎙️ English Accent Detector (via URL)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-if "results" not in st.session_state:
-    st.session_state.results = None
+# Bellekte analiz sonucu tutulsun
+if "result" not in st.session_state:
+    st.session_state.result = None
 
 if st.button("Analyze Accent") and video_url:
     with st.spinner("🔄 Downloading and analyzing video..."):
@@ -30,35 +27,39 @@ if st.button("Analyze Accent") and video_url:
             transcript = transcribe_audio(video_path)
             results = analyze_accent(transcript)
 
-            st.session_state.results = {
-                "segments": results,
-                "transcript": transcript
-            }
+            st.session_state.result = results
 
             st.success("✅ Analysis Complete!")
-            for idx, segment in enumerate(results, 1):
-                st.markdown(f"""
-**🧩 Segment {idx}**
-- **🗣️ Detected Accent:** `{segment.get('accent', 'Not available')}`
-- **📊 Confidence Score:** `{segment.get('confidence', 'Not available')}%`
-- **🧠 Explanation:** _{segment.get('explanation', 'Not available')}_  
-""")
+            for idx, res in enumerate(results):
+                st.markdown(f"### 🧩 Segment {idx + 1}")
+                st.markdown(f"**🗣️ Detected Accent:** `{res['accent']}`")
+                st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
+                st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
 # PDF + Mail alanı sadece analiz yapılmışsa görünür
-if st.session_state.results:
+if st.session_state.result:
     st.subheader("📧 Get Report by Email")
     recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
     if st.button("📤 Send PDF Report") and recipient_email:
         try:
             # PDF dosyasını oluştur
-            pdf_path = export_results_to_pdf(
-                st.session_state.results["segments"],
-                st.session_state.results["transcript"]
-            )
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pdf_path = f"accent_report_{timestamp}.pdf"
+
+            content = ""
+            for idx, res in enumerate(st.session_state.result):
+                content += f"Segment {idx + 1}\n"
+                content += f"Accent: {res['accent']}\n"
+                content += f"Confidence Score: {res['confidence']}%\n"
+                content += f"Explanation: {res['explanation']}\n\n"
+
+            with open(pdf_path, "w") as f:
+                f.write(content)
 
             sender_email = os.getenv("SENDER_EMAIL")
             sender_password = os.getenv("SENDER_PASSWORD")
