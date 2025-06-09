@@ -9,7 +9,7 @@ st.title("🎙️ English Accent Analyzer")
 video_url = st.text_input("🔗 Enter a public video URL (MP4):")
 email_input_visible = False
 
-# İlk analiz yapılana kadar PDF ve e-posta alanı görünmesin
+
 if "results" not in st.session_state:
     st.session_state.results = None
     st.session_state.full_text = ""
