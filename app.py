@@ -22,9 +22,18 @@ if st.button("Analyze Accent") and video_url:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
 
-            transcript = transcribe_audio(video_path)
-            segments = split_transcript_by_segments(transcript)
-            analyses = []
+       transcript = transcribe_audio(video_path)
+accent_analysis = analyze_accent(transcript)
+
+st.session_state.result = {
+    "analysis": accent_analysis,
+    "transcript": transcript
+}
+
+st.success("✅ Analysis Complete!")
+st.markdown("**🎧 Accent Analysis:**")
+st.text(accent_analysis)
+
 
             for idx, segment in enumerate(segments):
                 accent, confidence, explanation = analyze_accent(segment)
@@ -42,7 +51,7 @@ if st.button("Analyze Accent") and video_url:
 
             st.success("✅ Analysis Complete!")
             for i, res in enumerate(analyses):
-                st.markdown(f"### 🎧 Speaker {i+1}")
+                st.markdown(f"### Speaker {i+1}")
                 st.markdown(f"**Accent:** `{res['accent']}`")
                 st.markdown(f"**Confidence:** `{res['confidence']}%`")
                 st.markdown(f"**Explanation:** _{res['explanation']}_")
