@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import download_video, transcribe_audio, analyze_accent
+from utils import download_video, transcribe_audio_whisper, analyze_accent_local
 import uuid
 import os
 from dotenv import load_dotenv
@@ -24,8 +24,8 @@ if st.button("Analyze Accent") and video_url:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
 
-            transcript = transcribe_audio(video_path)
-            results = analyze_accent(transcript)
+            transcript = transcribe_audio_whisper(video_path)
+            results = analyze_accent_local(transcript)
 
             st.session_state.result = results
 
