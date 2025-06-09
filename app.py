@@ -34,6 +34,9 @@ if st.button("Analyze Accent") and video_url:
                 st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
                 st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
 
+              st.info("🔎 Accent predictions are based on **text analysis** only. In multi-speaker videos, different accents may be detected per segment.")
+
+
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
