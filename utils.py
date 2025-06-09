@@ -2,6 +2,9 @@ import requests
 from openai import OpenAI
 import os
 from io import BytesIO
+from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -31,66 +34,82 @@ def transcribe_audio(video_path):
     )
     return transcript.text
 
-def split_transcript_by_segments(transcript, segment_length=150):
-    import re
-    transcript = re.sub(r'\b(haha|hihi|lol|laugh|giggle|[\[\]()])\b', '', transcript, flags=re.IGNORECASE)
-    words = transcript.split()
-    segments = [' '.join(words[i:i + segment_length]) for i in range(0, len(words), segment_length)]
-    return segments
-
 def analyze_accent(transcript):
-    segments = split_transcript_by_segments(transcript)
+    # Split transcript into segments by speaker turns or long pauses (naive split)
+    segments = transcript.split(". ")  # Rough segmentation, better with diarization
+    chunked_segments = [". ".join(segments[i:i+3]) for i in range(0, len(segments), 3)]
+
     results = []
-
-    for i, segment in enumerate(segments):
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following English speech transcript segment and determine:
+    for chunk in chunked_segments:
+        prompt = f"""
+You are an expert linguist specialized in English accents. Analyze the following transcript to determine:
 - The likely English accent (e.g., British, American, Indian, etc.)
-- A confidence score (0-100%)
-- A short 2-3 sentence explanation about this speech.
+- Confidence score (0-100%)
+- Short 2-3 sentence explanation of the content
 
-Ignore meaningless sounds (e.g., laughter, filler noises).
+Only analyze meaningful speech. Ignore irrelevant sounds like laughter, filler words, or noise.
 
-Format your response exactly as:
-Accent: ...
-Confidence Score: ...%
-Explanation: ...
----
-Segment:
-{segment}
+Transcript:
+{chunk}
 """
-                    }
-                ]
-            )
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-            answer = response.choices[0].message.content.strip()
-            lines = answer.splitlines()
+        answer = response.choices[0].message.content
+        lines = answer.strip().splitlines()
+        try:
+            accent = lines[0].split(":")[-1].strip()
+            confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
+            explanation = lines[2].split(":", 1)[-1].strip()
+        except:
+            accent = "N/A"
+            confidence = 0
+            explanation = "Parsing error."
 
-            def get_line_value(label):
-                line = next((l for l in lines if l.startswith(label)), None)
-                return line.split(":", 1)[-1].strip() if line else "Not available"
-
-            accent = get_line_value("Accent")
-            confidence = get_line_value("Confidence Score").replace("%", "").strip()
-            explanation = get_line_value("Explanation")
-
-            results.append({
-                "accent": accent or "Not available",
-                "confidence": confidence or "Not available",
-                "explanation": explanation or "Not available"
-            })
-
-        except Exception as e:
-            results.append({
-                "accent": "Not available",
-                "confidence": "Not available",
-                "explanation": "Not available"
-            })
+        results.append({
+            "accent": accent,
+            "confidence": confidence,
+            "explanation": explanation,
+            "segment": chunk
+        })
 
     return results
+
+def export_results_to_pdf(results, output_file="accent_report.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
+    pdf.ln(10)
+
+    for idx, res in enumerate(results):
+        pdf.multi_cell(0, 10, txt=f"""
+Segment {idx + 1}:
+Accent: {res['accent']}
+Confidence Score: {res['confidence']}%
+Explanation: {res['explanation']}
+Transcript: {res['segment']}
+""")
+        pdf.ln(5)
+
+    pdf.output(output_file)
+    return output_file
+
+def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
+    msg = EmailMessage()
+    msg["Subject"] = "Accent Detection Report"
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
+    msg.set_content("Please find the attached accent analysis report.")
+
+    with open(pdf_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(pdf_path)
+
+    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(msg)
