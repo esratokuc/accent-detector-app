@@ -57,7 +57,20 @@ Transcript:
     )
     answer = response.choices[0].message.content
     lines = answer.strip().splitlines()
-    accent = lines[0].split(":")[-1].strip()
-    confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-    explanation = lines[2].split(":", 1)[-1].strip()
-    return accent, confidence, explanation  # ✅ dikkat!
+
+    # Varsayılanlar
+    accent, confidence, explanation = "Unknown", 0, "No explanation provided."
+
+    for line in lines:
+        if line.lower().startswith("accent:"):
+            accent = line.split(":", 1)[-1].strip()
+        elif line.lower().startswith("confidence score:"):
+            try:
+                confidence = int(line.split(":", 1)[-1].replace("%", "").strip())
+            except:
+                confidence = 0
+        elif line.lower().startswith("explanation:"):
+            explanation = line.split(":", 1)[-1].strip()
+
+    return accent, confidence, explanation
+
