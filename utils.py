@@ -1,116 +1,82 @@
 import requests
-import tempfile
-import streamlit as st
-from moviepy.editor import VideoFileClip
-from fpdf import FPDF
-from email.message import EmailMessage
-import smtplib
-import uuid
+import time
 import openai
-import assemblyai as aai
+import os
 
-# 🔐 API Anahtarları
-aai.settings.api_key = st.secrets["ASSEMBLYAI_API_KEY"]
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# Set your API keys
+ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
-def download_video(url, output_path):
-    r = requests.get(url, stream=True)
-    with open(output_path, 'wb') as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            f.write(chunk)
+def upload_to_assemblyai(audio_url):
+    headers = {"authorization": ASSEMBLYAI_API_KEY}
+    json = {"audio_url": audio_url, "speaker_labels": True}
+    response = requests.post("https://api.assemblyai.com/v2/transcript", json=json, headers=headers)
+    transcript_id = response.json()["id"]
 
-def transcribe_audio_whisper(video_path):
-    audio_path = video_path.replace(".mp4", ".wav")
-    clip = VideoFileClip(video_path)
-    clip.audio.write_audiofile(audio_path)
+    # Poll until done
+    while True:
+        polling = requests.get(f"https://api.assemblyai.com/v2/transcript/{transcript_id}", headers=headers).json()
+        if polling["status"] == "completed":
+            return polling["utterances"]
+        elif polling["status"] == "error":
+            raise Exception("Transcription failed:", polling["error"])
+        time.sleep(5)
 
-    transcriber = aai.Transcriber()
-    config = aai.TranscriptionConfig(speaker_labels=True, language_code="en")
-    transcript = transcriber.transcribe(audio_path, config=config)
-    return transcript
+def openai_analyze(text):
+    prompt = f"""
+Given the following spoken text, detect:
+1. English accent (e.g., British, American, Australian)
+2. The emotion (e.g., happy, neutral, nostalgic)
+3. A 1-2 sentence summary
 
-def analyze_by_unique_speakers(transcript):
-    results = []
-    seen_speakers = set()
+Text:
+\"\"\"{text}\"\"\"
 
-    for utterance in transcript.utterances:
-        speaker_id = utterance.speaker
-        if speaker_id in seen_speakers:
-            continue  # Aynı kişiyi tekrar analiz etme
-        seen_speakers.add(speaker_id)
-        segment_text = utterance.text
+Respond in this format:
 
-        prompt = f"""
-You are a professional linguist and communication analyst.
-
-For the following English transcript spoken by one person, provide:
-1. The likely English accent (e.g., British, American, etc.)
-2. A confidence score (0-100%) for the accent guess.
-3. The speaker's emotional tone (e.g., happy, neutral, calm, excited, etc.)
-4. A 2-3 sentence summary of what the speaker is talking about.
-
-Transcript:
-{segment_text}
+Accent: ...
+Emotion: ...
+Summary: ...
 """
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}]
-        )
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
 
-        answer = response['choices'][0]['message']['content']
-        # Simple extraction logic
-        lines = answer.strip().splitlines()
-        accent = lines[0].split(":")[-1].strip()
-        confidence = int(lines[1].split(":")[-1].replace("%", "").strip())
-        sentiment = lines[2].split(":")[-1].strip()
-        summary = lines[3].split(":", 1)[-1].strip() if lines[3].startswith("Summary:") else " ".join(lines[3:])
+    return response.choices[0].message.content
 
-        results.append({
-            "speaker_id": speaker_id,
-            "segment": segment_text,
-            "accent": accent,
-            "confidence": confidence,
-            "sentiment": sentiment,
-            "summary": summary
-        })
+def process_video_and_analyze(video_url):
+    # Step 1: Transcribe and detect speakers
+    utterances = upload_to_assemblyai(video_url)
 
-    return results
+    speaker_data = {}
+    for u in utterances:
+        speaker = u["speaker"]
+        text = u["text"]
+        if speaker not in speaker_data:
+            speaker_data[speaker] = {"full_text": [], "segments": []}
+        speaker_data[speaker]["full_text"].append(text)
+        speaker_data[speaker]["segments"].append(text)
 
-def export_results_to_pdf(results):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
-    pdf.ln(10)
+    # Step 2: Run OpenAI for each speaker's full text
+    final_results = {}
+    for speaker, data in speaker_data.items():
+        joined_text = " ".join(data["full_text"])
+        result_text = openai_analyze(joined_text)
 
-    for r in results:
-        pdf.multi_cell(0, 10, txt=f"""
-👤 Speaker {r['speaker_id']}
-Accent: {r['accent']}
-Confidence: {r['confidence']}%
-Sentiment: {r['sentiment']}
-Summary: {r['summary']}
+        parsed = {}
+        for line in result_text.strip().split("\n"):
+            if ":" in line:
+                key, val = line.split(":", 1)
+                parsed[key.strip().lower()] = val.strip()
 
-Transcript:
-{r['segment']}
-""")
-        pdf.ln(5)
+        final_results[speaker] = {
+            "accent": parsed.get("accent", "N/A"),
+            "emotion": parsed.get("emotion", "N/A"),
+            "summary": parsed.get("summary", "N/A"),
+            "segments": data["segments"]
+        }
 
-    output_path = f"accent_report_{uuid.uuid4().hex}.pdf"
-    pdf.output(output_path)
-    return output_path
-
-def send_email_with_pdf(recipient_email, pdf_path):
-    msg = EmailMessage()
-    msg["Subject"] = "Accent Detection Report"
-    msg["From"] = st.secrets["SENDER_EMAIL"]
-    msg["To"] = recipient_email
-    msg.set_content("Please find the attached accent analysis report.")
-
-    with open(pdf_path, "rb") as f:
-        msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=pdf_path)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(st.secrets["SENDER_EMAIL"], st.secrets["SENDER_PASSWORD"])
-        smtp.send_message(msg)
+    return final_results
