@@ -1,6 +1,6 @@
 streamlit
 torch
 torchaudio
+whisper
 moviepy
 fpdf
-whisper
