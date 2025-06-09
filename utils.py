@@ -3,11 +3,9 @@ from openai import OpenAI
 import os
 from io import BytesIO
 
-# Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def download_video(url, filename="video.mp4"):
-    """Download video from public URL"""
     r = requests.get(url, stream=True)
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
@@ -16,8 +14,7 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    """Transcribe first 25MB of video audio using OpenAI Whisper API"""
-    max_bytes = 26_214_400 - 512  # Slightly under 25MB
+    max_bytes = 26_214_400 - 512  # 25MB safety margin
 
     if os.path.getsize(video_path) > max_bytes:
         print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
@@ -26,16 +23,16 @@ def transcribe_audio(video_path):
         file_chunk = f.read(max_bytes)
 
     partial_file = BytesIO(file_chunk)
-    partial_file.name = "audio.mp3"  # Ensure proper format for Whisper
+    partial_file.name = "audio.mp3"  # Safe format for Whisper
 
     transcript = client.audio.transcriptions.create(
         model="whisper-1",
         file=partial_file
     )
     return transcript.text
-# Updated parsing with strict label search
+
 def analyze_accent(transcript):
-    """Analyze transcript for accent, clarity, tone, and content"""
+    """Analyze transcript for accent, clarity, and content"""
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -54,9 +51,7 @@ TASKS:
    - Clarity of Speech
    - Diction & Pronunciation
    - Expressiveness
-   - Confidence / Presence
-6. Identify the **dominant emotional tone** of the speaker (e.g., serious, uplifting, calm, intense, passionate).
-7. Suggest a 1-line video description for YouTube.
+6. Suggest a 1-line video description.
 
 Use this exact format:
 
@@ -70,8 +65,6 @@ Summary:
 Clarity: ...
 Diction: ...
 Expressiveness: ...
-Presence: ...
-Tone: ...
 Video Description: ...
 """
             }
@@ -95,7 +88,6 @@ Video Description: ...
     confidence = safe_int(get_value("Accent Score").replace("%", ""))
     explanation = get_value("Accent Explanation")
 
-    # Summary extraction
     try:
         summary_start = lines.index("Summary:") + 1
         scores_start = next(i for i, l in enumerate(lines) if l.startswith("Clarity:"))
@@ -106,8 +98,6 @@ Video Description: ...
     clarity = safe_int(get_value("Clarity"))
     diction = safe_int(get_value("Diction"))
     expressiveness = safe_int(get_value("Expressiveness"))
-    presence = safe_int(get_value("Presence"))
-    tone = get_value("Tone")
     video_description = get_value("Video Description")
 
     return (
@@ -118,50 +108,5 @@ Video Description: ...
         clarity,
         diction,
         expressiveness,
-        presence,
-        tone,
-        video_description
-    )
-
-
-    def get_value(label):
-        line = next((l for l in lines if l.startswith(label)), None)
-        return line.split(":", 1)[-1].strip() if line else "Not available"
-
-    def safe_int(text):
-        try:
-            return int(text)
-        except:
-            return "Not available"
-
-    accent = get_value("Accent")
-    confidence = safe_int(get_value("Confidence").replace("%", ""))
-    explanation = get_value("Explanation")
-
-    # Extract multi-line summary
-    try:
-        summary_start = lines.index("Summary:") + 1
-        scores_start = next(i for i, l in enumerate(lines) if l.startswith("Clarity"))
-        summary = "\n".join(lines[summary_start:scores_start]).strip()
-    except:
-        summary = "Not available"
-
-    clarity = safe_int(get_value("Clarity"))
-    diction = safe_int(get_value("Diction"))
-    expressiveness = safe_int(get_value("Expressiveness"))
-    presence = safe_int(get_value("Confidence"))
-    tone = get_value("Tone")
-    video_description = get_value("Video Description")
-
-    return (
-        accent,
-        confidence,
-        explanation,
-        summary,
-        clarity,
-        diction,
-        expressiveness,
-        presence,
-        tone,
         video_description
     )
