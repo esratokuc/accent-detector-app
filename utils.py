@@ -1,16 +1,15 @@
 import os
+import time
 import requests
-from io import BytesIO
-from fpdf import FPDF
-import smtplib
-from email.message import EmailMessage
-from moviepy.editor import VideoFileClip
-import whisper
+import streamlit as st
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Load Whisper model
-whisper_model = whisper.load_model("base")
+# API anahtarlarını streamlit secrets'tan al
+ASSEMBLYAI_API_KEY = st.secrets["ASSEMBLYAI_API_KEY"]
 
 def download_video(url, filename="video.mp4"):
+    """MP4 formatında videoyu indirir"""
     r = requests.get(url, stream=True)
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
@@ -18,78 +17,74 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-def extract_audio_from_video(video_path, audio_path="audio.wav"):
-    clip = VideoFileClip(video_path)
-    clip.audio.write_audiofile(audio_path)
-    return audio_path
-
-def transcribe_audio_whisper(audio_path):
-    result = whisper_model.transcribe(audio_path)
-    return result["text"]
-
-def analyze_accent_local(transcript):
-    accents = {
-        "British": ["mate", "lorry", "bloody"],
-        "American": ["awesome", "dude", "gotten"],
-        "Indian": ["kindly", "do the needful", "itself"],
-        "Australian": ["brekkie", "no worries", "arvo"],
+def send_to_assemblyai(audio_path):
+    """AssemblyAI ile transkript ve konuşmacı ayrımı yapar"""
+    headers = {
+        "authorization": ASSEMBLYAI_API_KEY
     }
 
-    from random import randint
-    segments = transcript.split(". ")
-    results = []
+    # 1. Upload video/audio
+    with open(audio_path, 'rb') as f:
+        upload_res = requests.post("https://api.assemblyai.com/v2/upload", headers=headers, files={'file': f})
+        audio_url = upload_res.json()['upload_url']
 
-    for i, chunk in enumerate(segments):
-        accent = "Unknown"
-        for acc, keywords in accents.items():
-            if any(word.lower() in chunk.lower() for word in keywords):
-                accent = acc
-                break
-        confidence = randint(70, 95) if accent != "Unknown" else randint(40, 60)
-        explanation = f"Detected words suggest a possible {accent} accent."
+    # 2. Transcribe + diarization
+    transcript_request = {
+        "audio_url": audio_url,
+        "speaker_labels": True,
+        "language_code": "en_us",
+        "disfluencies": False,
+        "iab_categories": False,
+        "auto_highlights": False,
+        "filter_profanity": True
+    }
 
-        results.append({
-            "segment": chunk,
-            "accent": accent,
-            "confidence": confidence,
-            "explanation": explanation
-        })
+    response = requests.post("https://api.assemblyai.com/v2/transcript", json=transcript_request, headers=headers)
+    transcript_id = response.json()['id']
 
-    return results
+    # 3. Polling
+    while True:
+        polling_response = requests.get(f"https://api.assemblyai.com/v2/transcript/{transcript_id}", headers=headers)
+        status = polling_response.json()['status']
+        if status == 'completed':
+            return polling_response.json()
+        elif status == 'error':
+            raise Exception(f"Transcription failed: {polling_response.json()['error']}")
+        time.sleep(5)
 
-def export_results_to_pdf(results, output_file="accent_report.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
-    pdf.ln(10)
+def analyze_accent_from_transcript(transcript_text):
+    """Konuşma metninden aksan tahmini yapar (TF-IDF benzerliği ile)"""
+    accents = {
+        "British": "I can't go there because it's too late and I must finish my report.",
+        "American": "I can't go there cause it's too late and I gotta finish my report.",
+        "Indian": "I cannot go there because it's too late and I have to finish my report.",
+        "Australian": "I can't go there 'cause it's too late and I have to finish my report, mate.",
+        "Irish": "I can't be goin' there now, it's too late and I must finish me report.",
+        "South African": "I can't go there, it's too late and I must finish my report, hey.",
+        "Canadian": "I can't go there, it's too late and I have to finish my report, eh.",
+        "Nigerian": "I cannot go there now because it's too late and I have to complete my report.",
+        "Jamaican": "Mi can't go dere, it too late an' mi haffi finish mi report.",
+        "Singaporean": "I cannot go there leh, too late already, must finish my report lah.",
+        "Turkish": "I cannot go there because it's too late and I have to finish my report, you know?",
+        "French": "I cannot go there because it is too late and I must finish my report, no?",
+        "Spanish": "I cannot go there because it is too late and I have to finish my report, okay?",
+        "German": "I cannot go there, it's too late and I must finish my report, ja?",
+        "Chinese": "I cannot go there because too late already, must finish my report now.",
+        "Arabic": "I cannot go there, it is too late and I have to finish my report, habibi.",
+        "Russian": "I cannot go there, it’s too late and I must finish my report, da?",
+        "Brazilian Portuguese": "I cannot go there because it's too late and I have to finish my report, né?",
+        "Italian": "I cannot go there, it is too late and I must finish-a my report.",
+        "Greek": "I cannot go there, it’s too late and I must finish my report, malaka.",
+        "Korean": "I cannot go there, too late already, I have to finish my report, ya."
+    }
 
-    for idx, res in enumerate(results):
-        pdf.multi_cell(0, 10, txt=f"""
-Segment {idx + 1}:
-Accent: {res['accent']}
-Confidence Score: {res['confidence']}%
-Explanation: {res['explanation']}
-Transcript: {res['segment']}
-""")
-        pdf.ln(5)
+    documents = list(accents.values()) + [transcript_text]
+    vectorizer = TfidfVectorizer().fit_transform(documents)
+    vectors = vectorizer.toarray()
 
-    pdf.output(output_file)
-    return output_file
+    similarity = cosine_similarity([vectors[-1]], vectors[:-1])[0]
+    best_idx = similarity.argmax()
+    best_score = round(similarity[best_idx] * 100, 2)
 
-def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
-    msg = EmailMessage()
-    msg["Subject"] = "Accent Detection Report"
-    msg["From"] = sender_email
-    msg["To"] = recipient_email
-    msg.set_content("Please find the attached accent analysis report.")
-
-    with open(pdf_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(pdf_path)
-
-    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(sender_email, sender_password)
-        smtp.send_message(msg)
+    accent_name = list(accents.keys())[best_idx]
+    return accent_name, best_score
