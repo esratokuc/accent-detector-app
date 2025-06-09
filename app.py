@@ -1,70 +1,121 @@
-import streamlit as st
-from utils import download_video, transcribe_audio, analyze_accent, export_results_to_pdf, send_email_with_pdf
-import uuid
+import requests
 import os
-from dotenv import load_dotenv
+from io import BytesIO
+from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
+import torch
+import torchaudio
+import whisper
+import openai
+from transformers import pipeline
 
-# Load secrets if local
-load_dotenv()
+# Load Whisper model
+whisper_model = whisper.load_model("base")
 
-st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ English Accent Detector (via URL)")
+# Load sentiment analysis model
+sentiment_pipeline = pipeline("sentiment-analysis")
 
-video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Bellekte analiz sonucu tutulsun
-if "result" not in st.session_state:
-    st.session_state.result = None
+def download_video(url, filename="video.mp4"):
+    r = requests.get(url, stream=True)
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+    return filename
 
-if st.button("Analyze Accent") and video_url:
-    with st.spinner("🔄 Downloading and analyzing video..."):
+def transcribe_audio_whisper(video_path):
+    result = whisper_model.transcribe(video_path, word_timestamps=True)
+    return result
+
+def segment_speakers_and_analyze(whisper_result):
+    segments = whisper_result['segments']
+    processed_texts = set()
+    results = []
+
+    for segment in segments:
+        text = segment['text'].strip()
+        if len(text) < 10 or text in processed_texts:
+            continue
+        if any(x in text.lower() for x in ["laugh", "cough", "[music]", "♪"]):
+            continue
+
+        processed_texts.add(text)
+
+        # Accent analysis (simple keyword-based for local)
+        accents = {
+            "British": ["mate", "bloody", "queue", "lorry"],
+            "American": ["guy", "awesome", "gotten", "sidewalk"],
+            "Indian": ["kindly", "do the needful"],
+            "Australian": ["no worries", "arvo", "brekkie"]
+        }
+        found_accent = "Unknown"
+        for accent, keywords in accents.items():
+            if any(word.lower() in text.lower() for word in keywords):
+                found_accent = accent
+                break
+
+        # GPT ile özet
         try:
-            video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
-            video_path = download_video(video_url, filename=video_filename)
-
-            transcript = transcribe_audio(video_path)
-            accent, confidence, explanation = analyze_accent(transcript)
-
-            st.session_state.result = {
-                "accent": accent,
-                "confidence": confidence,
-                "explanation": explanation,
-                "transcript": transcript
-            }
-
-            st.success("✅ Analysis Complete!")
-            st.markdown(f"**🗣️ Detected Accent:** {accent}")
-            st.markdown(f"**📊 Confidence Score:** {confidence}%")
-            st.markdown(f"**🧠 Explanation:** _{explanation}_")
-
-        except Exception as e:
-            st.error(f"❌ An error occurred:\n\n{str(e)}")
-
-# PDF + Mail alanı sadece analiz yapılmışsa görünür
-if st.session_state.result:
-    st.subheader("📧 Get Report by Email")
-    recipient_email = st.text_input("Enter your email to receive the PDF report:")
-
-    if st.button("📤 Send PDF Report") and recipient_email:
-        try:
-            # PDF dosyasını oluştur
-            pdf_path = export_results_to_pdf(
-                st.session_state.result["accent"],
-                st.session_state.result["confidence"],
-                st.session_state.result["explanation"],
-                st.session_state.result["transcript"]
+            summary_prompt = f"Summarize the following statement: {text}"
+            summary_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": summary_prompt}],
+                temperature=0.7
             )
+            explanation = summary_response['choices'][0]['message']['content'].strip()
+        except:
+            explanation = "Could not generate summary."
 
-            # Secrets'ten gönderici bilgilerini al
-            sender_email = os.getenv("SENDER_EMAIL")
-            sender_password = os.getenv("SENDER_PASSWORD")
+        # Sentiment analysis
+        sentiment_result = sentiment_pipeline(text)[0]
 
-            send_email_with_pdf(
-                recipient_email,
-                pdf_path,
-                sender_email,
-                sender_password
-            )
-            st.success(f"📩 Report sent to {recipient_email}")
-        except Exception as e:
-            st.error(f"❌ Failed to send email:\n\n{str(e)}")
+        results.append({
+            "accent": found_accent,
+            "confidence": 85 if found_accent != "Unknown" else 50,
+            "explanation": explanation,
+            "sentiment": sentiment_result['label'],
+            "segment": text
+        })
+
+    return results
+
+def export_results_to_pdf(results, output_file="accent_report.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
+    pdf.ln(10)
+
+    for idx, res in enumerate(results):
+        pdf.multi_cell(0, 10, txt=f"""
+Segment {idx + 1}:
+Accent: {res['accent']}
+Confidence Score: {res['confidence']}%
+Sentiment: {res['sentiment']}
+Summary: {res['explanation']}
+Transcript: {res['segment']}
+""")
+        pdf.ln(5)
+
+    pdf.output(output_file)
+    return output_file
+
+def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
+    msg = EmailMessage()
+    msg["Subject"] = "Accent Detection Report"
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
+    msg.set_content("Please find the attached accent analysis report.")
+
+    with open(pdf_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(pdf_path)
+
+    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(msg)
