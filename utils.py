@@ -4,14 +4,10 @@ from io import BytesIO
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
-import torch
+from moviepy.editor import VideoFileClip
 import whisper
-import imageio_ffmpeg
 
-# FFmpeg yolunu manuel olarak ayarla (whisper bunu ister)
-os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
-
-# Whisper modelini yükle
+# Whisper model yükle
 whisper_model = whisper.load_model("base")
 
 def download_video(url, filename="video.mp4"):
@@ -20,10 +16,20 @@ def download_video(url, filename="video.mp4"):
         for chunk in r.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
+    if os.path.getsize(filename) < 1024:
+        raise ValueError("⚠️ Video dosyası çok küçük veya boş.")
     return filename
 
+def extract_audio(video_path, audio_path="audio.wav"):
+    clip = VideoFileClip(video_path)
+    clip.audio.write_audiofile(audio_path)
+    return audio_path
+
 def transcribe_audio_whisper(video_path):
-    result = whisper_model.transcribe(video_path)
+    audio_path = extract_audio(video_path)
+    if os.path.getsize(audio_path) < 1024:
+        raise ValueError("⚠️ Ses dosyası boş.")
+    result = whisper_model.transcribe(audio_path)
     return result["text"]
 
 def analyze_accent_local(transcript):
