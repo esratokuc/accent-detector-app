@@ -1,10 +1,9 @@
 streamlit
-openai
 moviepy
+openai
 torch
 transformers
 pydub
 assemblyai
 reportlab
 scikit-learn
-imageio[ffmpeg]
