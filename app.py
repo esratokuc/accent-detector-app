@@ -1,63 +1,70 @@
 import streamlit as st
-from utils import download_video, send_to_assemblyai, analyze_accent_from_transcript
+from utils import download_video, transcribe_audio, analyze_accent, export_results_to_pdf, send_email_with_pdf
 import uuid
 import os
+from dotenv import load_dotenv
+
+# Load secrets if local
+load_dotenv()
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ Multi-Speaker English Accent Detector")
+st.title("🎙️ English Accent Detector (via URL)")
 
-st.markdown("""
-Paste a public video URL (MP4 format) where multiple people are speaking English.  
-The app will detect each speaker's **accent** individually and show confidence scores.
-""")
+video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-video_url = st.text_input("📎 Enter a public video URL (e.g., Loom, Dropbox, direct link):")
-
+# Bellekte analiz sonucu tutulsun
 if "result" not in st.session_state:
     st.session_state.result = None
 
-if st.button("🔍 Analyze Accent") and video_url:
-    with st.spinner("Downloading & analyzing video..."):
+if st.button("Analyze Accent") and video_url:
+    with st.spinner("🔄 Downloading and analyzing video..."):
         try:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
 
-            json_result = send_to_assemblyai(video_path)
+            transcript = transcribe_audio(video_path)
+            accent, confidence, explanation = analyze_accent(transcript)
 
-            speakers = {}
-            for utterance in json_result["utterances"]:
-                text = utterance.get("text", "").strip()
-                if text.startswith("[") or not text:  # Skip [laughter], [music], etc.
-                    continue
-                speaker = utterance['speaker']
-                speakers.setdefault(speaker, "")
-                speakers[speaker] += " " + text
+            st.session_state.result = {
+                "accent": accent,
+                "confidence": confidence,
+                "explanation": explanation,
+                "transcript": transcript
+            }
 
-            results = []
-            for spk, text in speakers.items():
-                accent, score = analyze_accent_from_transcript(text)
-                results.append({
-                    "speaker": spk,
-                    "transcript": text,
-                    "accent": accent,
-                    "score": score
-                })
-
-            st.session_state.result = results
             st.success("✅ Analysis Complete!")
+            st.markdown(f"**🗣️ Detected Accent:** `{accent}`")
+            st.markdown(f"**📊 Confidence Score:** `{confidence}%`")
+            st.markdown(f"**🧠 Explanation:** _{explanation}_")
 
         except Exception as e:
-            st.error(f"❌ Error during processing:\n\n{str(e)}")
+            st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-# 🔎 Result display
+# PDF + Mail alanı sadece analiz yapılmışsa görünür
 if st.session_state.result:
-    st.subheader("🧑‍⚕️ Detected Speaker Accents")
-    for item in st.session_state.result:
-        st.markdown(f"---")
-        st.markdown(f"### 🗣️ Speaker {item['speaker']}")
-        st.markdown(f"- **Accent:** `{item['accent']}`")
-        st.markdown(f"- **Confidence Score:** `{item['score']}%`")
-        with st.expander("📝 Full Transcript"):
-            st.write(item['transcript'])
+    st.subheader("📧 Get Report by Email")
+    recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
-    # Optional PDF/Email feature can be added here
+    if st.button("📤 Send PDF Report") and recipient_email:
+        try:
+            # PDF dosyasını oluştur
+            pdf_path = export_results_to_pdf(
+                st.session_state.result["accent"],
+                st.session_state.result["confidence"],
+                st.session_state.result["explanation"],
+                st.session_state.result["transcript"]
+            )
+
+            # Secrets'ten gönderici bilgilerini al
+            sender_email = os.getenv("SENDER_EMAIL")
+            sender_password = os.getenv("SENDER_PASSWORD")
+
+            send_email_with_pdf(
+                recipient_email,
+                pdf_path,
+                sender_email,
+                sender_password
+            )
+            st.success(f"📩 Report sent to {recipient_email}")
+        except Exception as e:
+            st.error(f"❌ Failed to send email:\n\n{str(e)}")
