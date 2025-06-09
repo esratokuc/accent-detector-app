@@ -4,7 +4,6 @@ import uuid
 import os
 from dotenv import load_dotenv
 
-# Load secrets from .env
 load_dotenv()
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
@@ -12,7 +11,6 @@ st.title("🎙️ English Accent Detector (via URL)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-# Store analysis result in session state
 if "result" not in st.session_state:
     st.session_state.result = None
 
@@ -28,23 +26,28 @@ if st.button("Analyze Accent") and video_url:
             st.session_state.result = results
 
             st.success("✅ Analysis Complete!")
-            st.markdown("### 🔍 Segment Results:")
             for idx, res in enumerate(results):
-                st.markdown(f"**Segment {idx+1}**\n- Accent: `{res['accent']}`\n- Confidence: `{res['confidence']}%`\n- Explanation: _{res['explanation']}_")
+                with st.expander(f"🧩 Segment {idx+1}"):
+                    st.markdown(f"**Accent:** `{res['accent']}`")
+                    st.markdown(f"**Confidence:** `{res['confidence']}%`")
+                    st.markdown(f"**Explanation:** _{res['explanation']}_")
+                    st.markdown(f"**Transcript:** {res['segment']}")
 
             st.info("🔎 Accent predictions are based on **text analysis** only. In multi-speaker videos, different accents may be detected per segment.")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-# PDF + Email form shown after analysis
 if st.session_state.result:
     st.subheader("📧 Get Report by Email")
     recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
     if st.button("📤 Send PDF Report") and recipient_email:
         try:
-            pdf_path = export_results_to_pdf(st.session_state.result)
+            pdf_path = export_results_to_pdf(
+                st.session_state.result,
+                output_file="accent_report.pdf"
+            )
 
             sender_email = os.getenv("SENDER_EMAIL")
             sender_password = os.getenv("SENDER_PASSWORD")
