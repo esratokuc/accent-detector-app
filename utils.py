@@ -44,10 +44,22 @@ def analyze_accent(transcript):
             {
                 "role": "user",
                 "content": f"""
-You are an expert linguist specialized in English accents. Analyze the following transcript and audio context to determine:
-- The likely English accent (e.g., British, American, Indian, etc.)
-- Confidence score (0-100%)
-- Short 2-3 sentence explanation of Video.
+You are an expert linguist specialized in English accents.
+
+The transcript below includes multiple English speakers. For each distinct speaker (or speaking style), identify:
+1. The likely accent (e.g., British, American, Indian, etc.)
+2. Confidence score (0-100%)
+3. A short explanation (1-2 sentences)
+
+If multiple accents are detected, list them clearly as:
+
+Speaker 1:
+- Accent: ...
+- Confidence: ...%
+- Explanation: ...
+
+Speaker 2:
+...
 
 Transcript:
 {transcript}
@@ -55,22 +67,8 @@ Transcript:
             }
         ]
     )
-    answer = response.choices[0].message.content
-    lines = answer.strip().splitlines()
 
-    # Varsayılanlar
-    accent, confidence, explanation = "Unknown", 0, "No explanation provided."
+    answer = response.choices[0].message.content.strip()
+    return answer
 
-    for line in lines:
-        if line.lower().startswith("accent:"):
-            accent = line.split(":", 1)[-1].strip()
-        elif line.lower().startswith("confidence score:"):
-            try:
-                confidence = int(line.split(":", 1)[-1].replace("%", "").strip())
-            except:
-                confidence = 0
-        elif line.lower().startswith("explanation:"):
-            explanation = line.split(":", 1)[-1].strip()
-
-    return accent, confidence, explanation
 
