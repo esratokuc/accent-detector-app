@@ -1,5 +1,10 @@
 streamlit
+openai
+fpdf
+smtplib
+email
+python-dotenv
 requests
 whisper
-ffmpeg-python
+torchaudio
 torch
