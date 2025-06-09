@@ -28,13 +28,15 @@ if st.button("Analyze Accent") and video_url:
             st.session_state.result = results
 
             st.success("✅ Analysis Complete!")
-            for idx, res in enumerate(results):
-                st.markdown(f"### 🧩 Segment {idx + 1}")
-                st.markdown(f"**🗣️ Detected Accent:** `{res['accent']}`")
-                st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
-                st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
+st.success("✅ Analysis Complete!")
+for idx, res in enumerate(results):
+    st.markdown(f"### 🧩 Segment {idx + 1}")
+    st.markdown(f"**🗣️ Detected Accent:** `{res['accent']}`")
+    st.markdown(f"**📊 Confidence Score:** `{res['confidence']}%`")
+    st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
 
-              st.info("🔎 Accent predictions are based on **text analysis** only. In multi-speaker videos, different accents may be detected per segment.")
+st.info("🔎 Accent predictions are based on **text analysis** only. In multi-speaker videos, different accents may be detected per segment.")
+
 
 
         except Exception as e:
