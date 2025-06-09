@@ -1,16 +1,16 @@
 import os
-import torch
-import whisper
+import requests
+from io import BytesIO
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
 from moviepy.editor import VideoFileClip
+import whisper
 
-# Whisper modeli yükle
+# Load Whisper model
 whisper_model = whisper.load_model("base")
 
 def download_video(url, filename="video.mp4"):
-    import requests
     r = requests.get(url, stream=True)
     with open(filename, "wb") as f:
         for chunk in r.iter_content(chunk_size=8192):
@@ -18,7 +18,7 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-def extract_audio(video_path, audio_path="audio.wav"):
+def extract_audio_from_video(video_path, audio_path="audio.wav"):
     clip = VideoFileClip(video_path)
     clip.audio.write_audiofile(audio_path)
     return audio_path
@@ -29,32 +29,30 @@ def transcribe_audio_whisper(audio_path):
 
 def analyze_accent_local(transcript):
     accents = {
-        "British": ["mate", "bloody", "queue", "lorry"],
-        "American": ["guy", "awesome", "gotten", "sidewalk"],
-        "Indian": ["only", "itself", "kindly", "do the needful"],
-        "Australian": ["no worries", "arvo", "brekkie"],
+        "British": ["mate", "lorry", "bloody"],
+        "American": ["awesome", "dude", "gotten"],
+        "Indian": ["kindly", "do the needful", "itself"],
+        "Australian": ["brekkie", "no worries", "arvo"],
     }
 
     from random import randint
     segments = transcript.split(". ")
-    chunked_segments = [". ".join(segments[i:i+3]) for i in range(0, len(segments), 3)]
-
     results = []
-    for chunk in chunked_segments:
-        found_accent = "Unknown"
-        for accent, keywords in accents.items():
-            if any(word.lower() in chunk.lower() for word in keywords):
-                found_accent = accent
-                break
 
-        confidence = randint(70, 95) if found_accent != "Unknown" else randint(40, 60)
-        explanation = f"Detected words suggest a possible {found_accent} accent."
+    for i, chunk in enumerate(segments):
+        accent = "Unknown"
+        for acc, keywords in accents.items():
+            if any(word.lower() in chunk.lower() for word in keywords):
+                accent = acc
+                break
+        confidence = randint(70, 95) if accent != "Unknown" else randint(40, 60)
+        explanation = f"Detected words suggest a possible {accent} accent."
 
         results.append({
-            "accent": found_accent,
+            "segment": chunk,
+            "accent": accent,
             "confidence": confidence,
-            "explanation": explanation,
-            "segment": chunk
+            "explanation": explanation
         })
 
     return results
