@@ -1,50 +1,63 @@
 import streamlit as st
+from utils import download_video, send_to_assemblyai, analyze_accent_from_transcript
 import uuid
-from utils import (
-    download_video,
-    extract_audio_from_video,
-    transcribe_audio_whisper,
-    analyze_accent_local,
-    export_results_to_pdf,
-    send_email_with_pdf
-)
+import os
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ English Accent Detector (Offline Whisper Model)")
+st.title("🎙️ Multi-Speaker English Accent Detector")
 
-video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
+st.markdown("""
+Paste a public video URL (MP4 format) where multiple people are speaking English.  
+The app will detect each speaker's **accent** individually and show confidence scores.
+""")
 
-if st.button("Analyze Accent") and video_url:
-    with st.spinner("🔄 Downloading and analyzing video..."):
+video_url = st.text_input("📎 Enter a public video URL (e.g., Loom, Dropbox, direct link):")
+
+if "result" not in st.session_state:
+    st.session_state.result = None
+
+if st.button("🔍 Analyze Accent") and video_url:
+    with st.spinner("Downloading & analyzing video..."):
         try:
             video_filename = f"video_{uuid.uuid4().hex[:8]}.mp4"
             video_path = download_video(video_url, filename=video_filename)
 
-            audio_path = extract_audio_from_video(video_path)
-            transcript = transcribe_audio_whisper(audio_path)
-            results = analyze_accent_local(transcript)
+            json_result = send_to_assemblyai(video_path)
 
+            speakers = {}
+            for utterance in json_result["utterances"]:
+                text = utterance.get("text", "").strip()
+                if text.startswith("[") or not text:  # Skip [laughter], [music], etc.
+                    continue
+                speaker = utterance['speaker']
+                speakers.setdefault(speaker, "")
+                speakers[speaker] += " " + text
+
+            results = []
+            for spk, text in speakers.items():
+                accent, score = analyze_accent_from_transcript(text)
+                results.append({
+                    "speaker": spk,
+                    "transcript": text,
+                    "accent": accent,
+                    "score": score
+                })
+
+            st.session_state.result = results
             st.success("✅ Analysis Complete!")
-            for res in results:
-                st.markdown(f"**🗣️ Accent:** `{res['accent']}`")
-                st.markdown(f"**📊 Confidence:** `{res['confidence']}%`")
-                st.markdown(f"**🧠 Explanation:** _{res['explanation']}_")
-                st.markdown(f"**📄 Segment:** _{res['segment']}_")
-                st.markdown("---")
-
-            # PDF Export and Email
-            with st.form("email_form"):
-                st.markdown("📩 Send Results by Email")
-                recipient = st.text_input("Recipient Email")
-                sender = st.text_input("Your Gmail", placeholder="example@gmail.com")
-                password = st.text_input("App Password", type="password")
-                submitted = st.form_submit_button("Send PDF")
-
-                if submitted:
-                    with st.spinner("✉️ Sending email..."):
-                        pdf_path = export_results_to_pdf(results)
-                        send_email_with_pdf(recipient, pdf_path, sender, password)
-                        st.success("📤 Email sent!")
 
         except Exception as e:
-            st.error(f"❌ An error occurred:\n\n{str(e)}")
+            st.error(f"❌ Error during processing:\n\n{str(e)}")
+
+# 🔎 Result display
+if st.session_state.result:
+    st.subheader("🧑‍⚕️ Detected Speaker Accents")
+    for item in st.session_state.result:
+        st.markdown(f"---")
+        st.markdown(f"### 🗣️ Speaker {item['speaker']}")
+        st.markdown(f"- **Accent:** `{item['accent']}`")
+        st.markdown(f"- **Confidence Score:** `{item['score']}%`")
+        with st.expander("📝 Full Transcript"):
+            st.write(item['transcript'])
+
+    # Optional PDF/Email feature can be added here
