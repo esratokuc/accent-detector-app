@@ -45,7 +45,7 @@ You are an expert linguist specialized in English accents.
 For the following segment, identify:
 - The likely English accent (e.g., British, American, Indian, etc.)
 - A confidence score (0–100%)
-- A short explanation (1–2 sentences).
+- A short explanation of video (2–3 sentences).
 
 Segment {idx+1}:
 {segment}
