@@ -33,8 +33,8 @@ if st.button("Analyze Accent") and video_url:
             }
 
             st.success("✅ Analysis Complete!")
-            st.markdown(f"**🗣️ Detected Accent:** `{accent}`")
-            st.markdown(f"**📊 Confidence Score:** `{confidence}%`")
+            st.markdown(f"**🗣️ Detected Accent:** {accent}")
+            st.markdown(f"**📊 Confidence Score:** {confidence}%")
             st.markdown(f"**🧠 Explanation:** _{explanation}_")
 
         except Exception as e:
