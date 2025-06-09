@@ -1,12 +1,16 @@
 import requests
-import openai
 import os
 import time
+from openai import OpenAI
 
+# API anahtarlarını al
 ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def transcribe_with_assemblyai(video_url):
+    """
+    AssemblyAI üzerinden video URL'sini çözümleyerek konuşmacı ayırımı yapılmış transkriptleri döndürür.
+    """
     endpoint = "https://api.assemblyai.com/v2/transcript"
     headers = {"authorization": ASSEMBLYAI_API_KEY}
     json = {
@@ -16,18 +20,23 @@ def transcribe_with_assemblyai(video_url):
         "entity_detection": False,
         "sentiment_analysis": False
     }
-    res = requests.post(endpoint, json=json, headers=headers)
-    transcript_id = res.json()["id"]
 
+    response = requests.post(endpoint, json=json, headers=headers)
+    transcript_id = response.json()["id"]
+
+    # Transkripsiyon tamamlanana kadar bekle
     while True:
         poll = requests.get(f"{endpoint}/{transcript_id}", headers=headers).json()
         if poll["status"] == "completed":
             return poll["utterances"]
         elif poll["status"] == "error":
-            raise Exception("Transcription error:", poll["error"])
+            raise Exception("Transcription failed:", poll["error"])
         time.sleep(5)
 
 def analyze_with_openai(text):
+    """
+    OpenAI GPT-3.5 ile aksan, duygu ve özet analizi yapar.
+    """
     prompt = f"""
 Analyze the following English transcript and answer:
 1. What is the speaker's likely English accent?
@@ -42,15 +51,20 @@ Accent: ...
 Emotion: ...
 Summary: ...
 """
-    res = openai.ChatCompletion.create(
+
+    res = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
     return res.choices[0].message.content.strip()
 
 def process_video_and_analyze(video_url):
+    """
+    Videoyu AssemblyAI ile analiz eder, her konuşmacıyı tespit eder ve OpenAI ile duygu + aksan yorumları üretir.
+    """
     utterances = transcribe_with_assemblyai(video_url)
 
+    # Konuşmacılara göre gruplama
     speakers = {}
     for u in utterances:
         spk = u["speaker"]
@@ -62,6 +76,8 @@ def process_video_and_analyze(video_url):
     final_results = {}
     for i, (spk, data) in enumerate(speakers.items()):
         ai_response = analyze_with_openai(data["full_text"])
+
+        # Varsayılan değerler
         accent = emotion = explanation = "N/A"
         for line in ai_response.splitlines():
             if line.lower().startswith("accent:"):
