@@ -4,18 +4,15 @@ from io import BytesIO
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
-import torch
 import whisper
 from transformers import pipeline
-
-# Initialize Whisper model
-whisper_model = whisper.load_model("base")
 
 # Placeholder for improved accent classifier (multi-class accent detection)
 accent_classifier = pipeline("text-classification", model="papluca/xlm-roberta-base-language-detection")
 
-ACCEPTED_ACCENTS = ["American", "British", "Indian", "Australian", "Irish", "Canadian", "South African"]
-
+ACCEPTED_ACCENTS = [
+    "American", "British", "Indian", "Australian", "Irish", "Canadian", "South African"
+]
 
 def download_video(url, filename="video.mp4"):
     r = requests.get(url, stream=True)
@@ -25,11 +22,10 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-
 def transcribe_audio_whisper(video_path):
-    result = whisper_model.transcribe(video_path)
+    model = whisper.load_model("base")  # Model yüklemesi fonksiyon içinde
+    result = model.transcribe(video_path)
     return result["text"]
-
 
 def analyze_accent_local(transcript):
     # Naive segmentation for demonstration
@@ -42,7 +38,6 @@ def analyze_accent_local(transcript):
         label = detected["label"].strip()
         score = round(detected["score"] * 100)
 
-        # Simple mapping or inclusion check
         accent = next((acc for acc in ACCEPTED_ACCENTS if acc.lower() in label.lower()), "Other")
         explanation = f"This segment appears to reflect a {accent} accent based on language style and tone."
 
@@ -54,7 +49,6 @@ def analyze_accent_local(transcript):
         })
 
     return results
-
 
 def export_results_to_pdf(results, output_file="accent_report.pdf"):
     pdf = FPDF()
@@ -75,7 +69,6 @@ Transcript: {res['segment']}
 
     pdf.output(output_file)
     return output_file
-
 
 def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
     msg = EmailMessage()
