@@ -4,19 +4,11 @@ from io import BytesIO
 from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
-import torch
-import torchaudio
-import whisper
-import openai
+from openai import OpenAI
 from transformers import pipeline
 
-# Load Whisper model
-whisper_model = whisper.load_model("base")
-
-# Load sentiment analysis model
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 sentiment_pipeline = pipeline("sentiment-analysis")
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def download_video(url, filename="video.mp4"):
     r = requests.get(url, stream=True)
@@ -26,70 +18,83 @@ def download_video(url, filename="video.mp4"):
                 f.write(chunk)
     return filename
 
-def transcribe_audio_whisper(video_path):
-    result = whisper_model.transcribe(video_path, word_timestamps=True)
-    return result
+def transcribe_audio(video_path):
+    max_bytes = 26_214_400 - 512
 
-def segment_speakers_and_analyze(whisper_result):
-    segments = whisper_result['segments']
+    if os.path.getsize(video_path) > max_bytes:
+        print("⚠️ File is large. Only the first 25MB will be analyzed.")
+
+    with open(video_path, "rb") as f:
+        file_chunk = f.read(max_bytes)
+
+    partial_file = BytesIO(file_chunk)
+    partial_file.name = "partial.mp4"
+
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=partial_file,
+        response_format="verbose_json",
+        timestamp_granularities=["segment"]
+    )
+    return transcript
+
+def analyze_accent_segments(transcription_result):
     processed_texts = set()
     results = []
 
-    for segment in segments:
+    for segment in transcription_result['segments']:
         text = segment['text'].strip()
-        if len(text) < 10 or text in processed_texts:
+        if len(text) < 10 or text.lower() in processed_texts:
             continue
-        if any(x in text.lower() for x in ["laugh", "cough", "[music]", "♪"]):
+        if any(x in text.lower() for x in ["laugh", "cough", "music", "[", "♪", "…"]):
             continue
+        processed_texts.add(text.lower())
 
-        processed_texts.add(text)
+        # OpenAI GPT ile analiz
+        prompt = f"""
+You are an expert linguist. For the following English sentence, determine:
+- The likely English accent (British, American, Indian, Australian, etc.)
+- Confidence score (0-100%)
+- Summary of what is being said (2 sentence)
+Transcript:
+{text}
+"""
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5
+        )
+        reply = response.choices[0].message.content.strip().splitlines()
 
-        # Accent analysis (simple keyword-based for local)
-        accents = {
-            "British": ["mate", "bloody", "queue", "lorry"],
-            "American": ["guy", "awesome", "gotten", "sidewalk"],
-            "Indian": ["kindly", "do the needful"],
-            "Australian": ["no worries", "arvo", "brekkie"]
-        }
-        found_accent = "Unknown"
-        for accent, keywords in accents.items():
-            if any(word.lower() in text.lower() for word in keywords):
-                found_accent = accent
-                break
-
-        # GPT ile özet
         try:
-            summary_prompt = f"Summarize the following statement: {text}"
-            summary_response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": summary_prompt}],
-                temperature=0.7
-            )
-            explanation = summary_response['choices'][0]['message']['content'].strip()
+            accent = reply[0].split(":")[-1].strip()
+            confidence = int(reply[1].split(":")[-1].replace("%", "").strip())
+            explanation = reply[2].split(":", 1)[-1].strip()
         except:
-            explanation = "Could not generate summary."
+            accent = "Unknown"
+            confidence = 50
+            explanation = "Summary not available"
 
-        # Sentiment analysis
-        sentiment_result = sentiment_pipeline(text)[0]
+        sentiment = sentiment_pipeline(text)[0]['label']
 
         results.append({
-            "accent": found_accent,
-            "confidence": 85 if found_accent != "Unknown" else 50,
+            "segment": text,
+            "accent": accent,
+            "confidence": confidence,
             "explanation": explanation,
-            "sentiment": sentiment_result['label'],
-            "segment": text
+            "sentiment": sentiment
         })
 
     return results
 
-def export_results_to_pdf(results, output_file="accent_report.pdf"):
+def export_results_to_pdf(segments, output_file="accent_report.pdf"):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
     pdf.ln(10)
 
-    for idx, res in enumerate(results):
+    for idx, res in enumerate(segments):
         pdf.multi_cell(0, 10, txt=f"""
 Segment {idx + 1}:
 Accent: {res['accent']}
@@ -98,7 +103,7 @@ Sentiment: {res['sentiment']}
 Summary: {res['explanation']}
 Transcript: {res['segment']}
 """)
-        pdf.ln(5)
+        pdf.ln(3)
 
     pdf.output(output_file)
     return output_file
