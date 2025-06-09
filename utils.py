@@ -2,6 +2,9 @@ import requests
 from openai import OpenAI
 import os
 from io import BytesIO
+from fpdf import FPDF
+import smtplib
+from email.message import EmailMessage
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -14,8 +17,7 @@ def download_video(url, filename="video.mp4"):
     return filename
 
 def transcribe_audio(video_path):
-    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
-
+    max_bytes = 26_214_400 - 512  # 25MB safe margin
     if os.path.getsize(video_path) > max_bytes:
         print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
 
@@ -31,44 +33,63 @@ def transcribe_audio(video_path):
     )
     return transcript.text
 
-def split_transcript_by_segments(transcript, segment_length=150):
-    # Split transcript into segments of ~segment_length words
-    words = transcript.split()
-    segments = [' '.join(words[i:i + segment_length]) for i in range(0, len(words), segment_length)]
-    return segments
-
 def analyze_accent(transcript):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {
-                "role": "user",
-                "content": f"""
+    # Split the transcript into segments of approximately 150 words
+    words = transcript.split()
+    segments = [' '.join(words[i:i + 150]) for i in range(0, len(words), 150)]
+
+    full_report = []
+    for idx, segment in enumerate(segments):
+        prompt = f"""
 You are an expert linguist specialized in English accents.
+For the following segment, identify:
+- The likely English accent (e.g., British, American, Indian, etc.)
+- A confidence score (0–100%)
+- A short explanation (1–2 sentences).
 
-The transcript below includes multiple English speakers. For each distinct speaker (or speaking style), identify:
-1. The likely accent (e.g., British, American, Indian, etc.)
-2. Confidence score (0-100%)
-3. A short explanation (1-2 sentences)
+Segment {idx+1}:
+{segment}
+"""
 
-If multiple accents are detected, list them clearly as:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        full_report.append(response.choices[0].message.content.strip())
 
-Speaker 1:
-- Accent: ...
-- Confidence: ...%
-- Explanation: ...
+    return "\n\n".join(full_report)
 
-Speaker 2:
-...
+def export_results_to_pdf(accent_report, transcript, output_file="accent_report.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
+    pdf.ln(10)
+
+    pdf.multi_cell(0, 10, txt=f"""
+Accent Analysis:
+
+{accent_report}
 
 Transcript:
 {transcript}
-"""
-            }
-        ]
-    )
+""")
+    pdf.output(output_file)
+    return output_file
 
-    answer = response.choices[0].message.content.strip()
-    return answer
+def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
+    msg = EmailMessage()
+    msg["Subject"] = "Accent Detection Report"
+    msg["From"] = sender_email
+    msg["To"] = recipient_email
+    msg.set_content("Please find the attached accent analysis report.")
 
+    with open(pdf_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(pdf_path)
 
+    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(sender_email, sender_password)
+        smtp.send_message(msg)
