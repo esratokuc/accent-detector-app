@@ -5,10 +5,13 @@ from fpdf import FPDF
 import smtplib
 from email.message import EmailMessage
 import torch
-import torchaudio
 import whisper
+import imageio_ffmpeg
 
-# Load Whisper model
+# FFmpeg yolunu manuel olarak ayarla (whisper bunu ister)
+os.environ["PATH"] += os.pathsep + os.path.dirname(imageio_ffmpeg.get_ffmpeg_exe())
+
+# Whisper modelini yükle
 whisper_model = whisper.load_model("base")
 
 def download_video(url, filename="video.mp4"):
@@ -24,7 +27,6 @@ def transcribe_audio_whisper(video_path):
     return result["text"]
 
 def analyze_accent_local(transcript):
-    # Define simple rules or use a local heuristic model
     accents = {
         "British": ["mate", "bloody", "queue", "lorry"],
         "American": ["guy", "awesome", "gotten", "sidewalk"],
