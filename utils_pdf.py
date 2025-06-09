@@ -1,49 +1,92 @@
-from fpdf import FPDF
+import requests
+from openai import OpenAI
 import os
-import smtplib
-from email.message import EmailMessage
+from io import BytesIO
 
-def export_results_to_pdf(analyses, full_transcript, output_file="accent_report.pdf"):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
-    pdf.cell(200, 10, txt="Accent Detection Report", ln=True, align="C")
-    pdf.ln(10)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    for i, res in enumerate(analyses):
-        pdf.set_font("Arial", "B", size=12)
-        pdf.cell(0, 10, f"Speaker {i+1}:", ln=True)
-        pdf.set_font("Arial", size=11)
-        pdf.multi_cell(0, 10, 
-            f"Accent: {res['accent']}\n"
-            f"Confidence: {res['confidence']}%\n"
-            f"Explanation: {res['explanation']}\n"
-            f"Transcript Segment:\n{res['segment']}\n"
-            "------------------------------------------\n"
-        )
+def download_video(url, filename="video.mp4"):
+    r = requests.get(url, stream=True)
+    with open(filename, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+    return filename
 
-    pdf.set_font("Arial", "B", size=12)
-    pdf.cell(0, 10, "Full Transcript:", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.multi_cell(0, 10, full_transcript)
+def transcribe_audio(video_path):
+    max_bytes = 26_214_400 - 512  # 25MB - güvenli marj
 
-    pdf.output(output_file)
-    return output_file
+    if os.path.getsize(video_path) > max_bytes:
+        print("⚠️ Warning: File is large. Only the first 25MB will be analyzed.")
 
-def send_email_with_pdf(recipient_email, pdf_path, sender_email, sender_password):
-    msg = EmailMessage()
-    msg["Subject"] = "Accent Detection Report"
-    msg["From"] = sender_email
-    msg["To"] = recipient_email
-    msg.set_content("Please find the attached accent analysis report.")
+    with open(video_path, "rb") as f:
+        file_chunk = f.read(max_bytes)
 
-    with open(pdf_path, "rb") as f:
-        file_data = f.read()
-        file_name = os.path.basename(pdf_path)
+    partial_file = BytesIO(file_chunk)
+    partial_file.name = "partial.mp4"
 
-    msg.add_attachment(file_data, maintype="application", subtype="pdf", filename=file_name)
+    transcript = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=partial_file
+    )
+    return transcript.text
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(sender_email, sender_password)
-        smtp.send_message(msg)
+def split_transcript_by_segments(transcript, segment_length=150):
+    words = transcript.split()
+    segments = [' '.join(words[i:i + segment_length]) for i in range(0, len(words), segment_length)]
+    return segments
+
+def analyze_accent(transcript):
+    segments = split_transcript_by_segments(transcript)
+    results = []
+
+    for i, segment in enumerate(segments):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""
+You are an expert linguist specialized in English accents. Analyze the following English speech transcript segment and determine:
+- The likely English accent (e.g., British, American, Indian, etc.)
+- A confidence score (0-100%)
+- A short 2-3 sentence explanation about this speech.
+
+Format your response exactly as:
+Accent: ...
+Confidence Score: ...%
+Explanation: ...
+---
+Segment:
+{segment}
+"""
+                    }
+                ]
+            )
+
+            answer = response.choices[0].message.content.strip()
+            lines = answer.splitlines()
+
+            def get_line_value(label):
+                line = next((l for l in lines if l.startswith(label)), None)
+                return line.split(":", 1)[-1].strip() if line else "Not available"
+
+            accent = get_line_value("Accent")
+            confidence = get_line_value("Confidence Score").replace("%", "").strip()
+            explanation = get_line_value("Explanation")
+
+            results.append({
+                "accent": accent or "Not available",
+                "confidence": confidence or "Not available",
+                "explanation": explanation or "Not available"
+            })
+
+        except Exception as e:
+            results.append({
+                "accent": "Not available",
+                "confidence": "Not available",
+                "explanation": "Not available"
+            })
+
+    return results
