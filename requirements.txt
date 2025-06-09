@@ -2,6 +2,6 @@ streamlit
 requests
 fpdf
 python-dotenv
-torch==2.0.1+cpu -f https://download.pytorch.org/whl/cpu
-torchaudio==2.0.1+cpu -f https://download.pytorch.org/whl/cpu
+torch
+torchaudio
 git+https://github.com/openai/whisper.git
