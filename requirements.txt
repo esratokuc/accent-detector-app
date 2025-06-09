@@ -1,4 +1,6 @@
 streamlit
-openai>=1.0.0
-requests
+openai
+transformers
+torch
 fpdf
+python-dotenv
