@@ -12,7 +12,7 @@ st.title("🎙️ English Accent Detector (via URL)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
-# Bellekte analiz sonucu tutulsun
+# Store analysis result in session
 if "result" not in st.session_state:
     st.session_state.result = None
 
@@ -23,34 +23,32 @@ if st.button("Analyze Accent") and video_url:
             video_path = download_video(video_url, filename=video_filename)
 
             transcript = transcribe_audio(video_path)
-            accent_analysis = analyze_accent(transcript)
+            accent_report = analyze_accent(transcript)
 
             st.session_state.result = {
-                "analysis": accent_analysis,
+                "accent_report": accent_report,
                 "transcript": transcript
             }
 
             st.success("✅ Analysis Complete!")
-            st.markdown("**🎧 Accent Analysis:**")
-            st.text(accent_analysis)
+            st.markdown("**🗣️ Accent Report:**")
+            st.code(accent_report, language="markdown")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-# PDF + Mail alanı sadece analiz yapılmışsa görünür
+# PDF + Email section (visible after analysis)
 if st.session_state.result:
     st.subheader("📧 Get Report by Email")
     recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
     if st.button("📤 Send PDF Report") and recipient_email:
         try:
-            # PDF dosyasını oluştur
             pdf_path = export_results_to_pdf(
-                st.session_state.result["analysis"],
+                st.session_state.result["accent_report"],
                 st.session_state.result["transcript"]
             )
 
-            # Secrets'ten gönderici bilgilerini al
             sender_email = os.getenv("SENDER_EMAIL")
             sender_password = os.getenv("SENDER_PASSWORD")
 
