@@ -1,5 +1,12 @@
 import streamlit as st
-from utils import download_video, transcribe_audio, analyze_accent, export_results_to_pdf, send_email_with_pdf
+from utils import (
+    download_video,
+    transcribe_audio,
+    split_transcript_by_segments,
+    analyze_accent,
+    export_results_to_pdf,
+    send_email_with_pdf
+)
 import uuid
 import os
 from dotenv import load_dotenv
@@ -8,13 +15,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(page_title="Accent Detector", layout="centered")
-st.title("🎙️ English Accent Detector (via URL)")
+st.title("🎙️ English Accent Detector (Multi-speaker Support)")
 
 video_url = st.text_input("📎 Enter a public video URL (MP4, Loom, etc.):")
 
 # Store analysis result in session
-if "result" not in st.session_state:
-    st.session_state.result = None
+if "results" not in st.session_state:
+    st.session_state.results = None
+if "full_transcript" not in st.session_state:
+    st.session_state.full_transcript = ""
 
 if st.button("Analyze Accent") and video_url:
     with st.spinner("🔄 Downloading and analyzing video..."):
@@ -23,30 +32,49 @@ if st.button("Analyze Accent") and video_url:
             video_path = download_video(video_url, filename=video_filename)
 
             transcript = transcribe_audio(video_path)
-            accent_report = analyze_accent(transcript)
+            st.session_state.full_transcript = transcript
 
-            st.session_state.result = {
-                "accent_report": accent_report,
-                "transcript": transcript
-            }
+            segments = split_transcript_by_segments(transcript)
+            results = []
 
+            for i, segment in enumerate(segments):
+                accent, confidence, explanation = analyze_accent(segment)
+                results.append({
+                    "segment": i + 1,
+                    "text": segment,
+                    "accent": accent,
+                    "confidence": confidence,
+                    "explanation": explanation
+                })
+
+            st.session_state.results = results
             st.success("✅ Analysis Complete!")
-            st.markdown("**🗣️ Accent Report:**")
-            st.code(accent_report, language="markdown")
 
         except Exception as e:
             st.error(f"❌ An error occurred:\n\n{str(e)}")
 
-# PDF + Email section (visible after analysis)
-if st.session_state.result:
+# Show results
+if st.session_state.results:
+    st.subheader("🔍 Accent Detection Results")
+    for res in st.session_state.results:
+        st.markdown(f"""
+**🧩 Segment {res['segment']}**
+- **Accent:** `{res['accent']}`
+- **Confidence:** `{res['confidence']}%`
+- **Explanation:** _{res['explanation']}_
+""")
+        with st.expander("📝 Transcript"):
+            st.write(res["text"])
+
+    # Email PDF
     st.subheader("📧 Get Report by Email")
     recipient_email = st.text_input("Enter your email to receive the PDF report:")
 
     if st.button("📤 Send PDF Report") and recipient_email:
         try:
             pdf_path = export_results_to_pdf(
-                st.session_state.result["accent_report"],
-                st.session_state.result["transcript"]
+                st.session_state.results,
+                st.session_state.full_transcript
             )
 
             sender_email = os.getenv("SENDER_EMAIL")
