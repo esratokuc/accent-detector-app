@@ -1,9 +1,10 @@
 streamlit
-requests
-assemblyai
 openai
-fpdf
 moviepy
-python-dotenv
-transformers
 torch
+transformers
+pydub
+assemblyai
+reportlab
+scikit-learn
+imageio[ffmpeg]
