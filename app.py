@@ -62,10 +62,10 @@ if st.button("Analyze Accent and Email Report") and video_url:
             # Send via email
             if recipient_email and sender_email and sender_password:
                 send_email_with_pdf(
-                    recipient_email=recipient_email,
+                    recipient_email = st.text_input("📬 Enter your email to receive the PDF report:"),
                     pdf_path=pdf_path,
-                    sender_email=sender_email,
-                    sender_password=sender_password
+                    sender_email="tokucesraa@gmail.com",
+                    sender_password= "holq pzka kina yimg",
                 )
                 st.success(f"📧 Report emailed to {recipient_email}")
             else:
