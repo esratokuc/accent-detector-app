@@ -1,5 +1,6 @@
 streamlit
 moviepy
+imageio-ffmpeg
 openai
 torch
 transformers
